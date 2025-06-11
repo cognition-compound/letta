@@ -320,6 +320,7 @@ class PassageManager:
             source_fields = {
                 "source_id": data["source_id"],
                 "file_id": data.get("file_id"),
+                "file_name": data.get("file_name"),  # Add file_name field
             }
             passage = SourcePassage(**common_fields, **source_fields)
         else:

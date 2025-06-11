@@ -48,16 +48,18 @@ async def load_data(
     embedding_config = source.embedding_config
 
     # insert passages/file
-    texts = []
     embedding_to_document_name = {}
     passage_count = 0
     file_count = 0
 
-    async def generate_embeddings(texts: List[str], embedding_config: EmbeddingConfig) -> List[Passage]:
+    async def generate_embeddings(
+        texts: List[str], 
+        file_metadatas: List[FileMetadata], 
+        passage_metadatas: List[Dict],
+        embedding_config: EmbeddingConfig
+    ) -> List[Passage]:
         passages = []
         if embedding_config.embedding_endpoint_type == "openai":
-            texts.append(passage_text)
-
             client = LLMClient.create(
                 provider_type=embedding_config.embedding_endpoint_type,
                 actor=actor,
@@ -69,10 +71,11 @@ async def load_data(
             embeddings = [embed_model.get_text_embedding(text) for text in texts]
 
         # collate passage and embedding
-        for text, embedding in zip(texts, embeddings):
+        for text, embedding, file_metadata, passage_metadata in zip(texts, embeddings, file_metadatas, passage_metadatas):
             passage = Passage(
                 text=text,
                 file_id=file_metadata.id,
+                file_name=file_metadata.file_name,  # Add file_name field
                 source_id=source.id,
                 metadata=passage_metadata,
                 organization_id=source.organization_id,
@@ -92,6 +95,11 @@ async def load_data(
             embedding_to_document_name[hashable_embedding] = file_name
         return passages
 
+    # Batch processing lists
+    texts = []
+    file_metadatas = []
+    passage_metadatas = []
+    
     for file_metadata in connector.find_files(source):
         file_count += 1
         await source_manager.create_file(file_metadata, actor)
@@ -106,21 +114,28 @@ async def load_data(
                 )
                 continue
 
-            # get embedding
+            # accumulate batch data
             texts.append(passage_text)
+            file_metadatas.append(file_metadata)
+            passage_metadatas.append(passage_metadata)
+            
             if len(texts) >= EMBEDDING_BATCH_SIZE:
-                passages = await generate_embeddings(texts, embedding_config)
+                # Process batch
+                passages = await generate_embeddings(texts, file_metadatas, passage_metadatas, embedding_config)
+                # Reset batch lists
                 texts = []
-            else:
-                continue
+                file_metadatas = []
+                passage_metadatas = []
+                
+                # insert passages into passage store
+                # Use the deprecated method for now as it handles mixed passage types
+                await passage_manager.create_many_passages_async(passages, actor)
+                passage_count += len(passages)
 
-            # insert passages into passage store
-            await passage_manager.create_many_passages_async(passages, actor)
-            passage_count += len(passages)
-
-    # final remaining
+    # Process final remaining batch
     if len(texts) > 0:
-        passages = await generate_embeddings(texts, embedding_config)
+        passages = await generate_embeddings(texts, file_metadatas, passage_metadatas, embedding_config)
+        # Use the deprecated method for now as it handles mixed passage types
         await passage_manager.create_many_passages_async(passages, actor)
         passage_count += len(passages)
 
