@@ -32,27 +32,28 @@ async def close_file(agent_state: "AgentState", file_name: str) -> str:
     raise NotImplementedError("Tool not implemented. Please contact the Letta team.")
 
 
-async def grep(agent_state: "AgentState", pattern: str) -> str:
+async def grep(agent_state: "AgentState", pattern: str, case_sensitive: bool = False) -> List[str]:
     """
-    Grep tool to search files across data sources with keywords.
+    Grep tool to search files across data sources with keywords or regex patterns.
 
     Args:
         pattern (str): Keyword or regex pattern to search.
+        case_sensitive (bool): Whether the search should be case sensitive. Defaults to False.
 
     Returns:
-        str: Matching lines or summary output.
+        List[str]: List of matching lines in format "filename:line_number:matching_line".
     """
     raise NotImplementedError("Tool not implemented. Please contact the Letta team.")
 
 
-async def search_files(agent_state: "AgentState", query: str) -> List["FileMetadata"]:
+async def search_files(agent_state: "AgentState", query: str) -> List[str]:
     """
-    Get list of most relevant files across all data sources.
+    Search for text within attached files using semantic search and return passages with their source filenames.
 
     Args:
         query (str): The search query.
 
     Returns:
-        List[FileMetadata]: List of matching files.
+        List[str]: List of formatted search results with filename prefixes.
     """
     raise NotImplementedError("Tool not implemented. Please contact the Letta team.")

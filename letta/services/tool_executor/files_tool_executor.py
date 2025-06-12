@@ -1,3 +1,4 @@
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from letta.schemas.agent import AgentState
@@ -104,6 +105,9 @@ class LettaFileToolExecutor(ToolExecutor):
         # TODO: Inefficient, maybe we can pre-compute this
         # TODO: This is also not the best way to split things - would be cool to have "content aware" splitting
         # TODO: Split code differently from large text blurbs
+        if not file or not file.content:
+            raise ValueError(f"File {file_name} has no content or could not be loaded")
+        
         content_lines = LineChunker().chunk_text(text=file.content, start=start, end=end)
         visible_content = "\n".join(content_lines)
 
@@ -120,11 +124,51 @@ class LettaFileToolExecutor(ToolExecutor):
         )
         return "Success"
 
-    async def grep(self, agent_state: AgentState, pattern: str) -> str:
-        """Stub for grep tool."""
-        raise NotImplementedError
+    async def grep(self, agent_state: AgentState, pattern: str, case_sensitive: bool = False) -> List[str]:
+        """Search for pattern across all attached files using regex/string matching."""
+        # Get all file agents for this agent
+        file_agents = await self.files_agents_manager.list_files_for_agent(agent_id=agent_state.id, actor=self.actor)
 
-    # TODO: Make this paginated?
+        if not file_agents:
+            return ["No files attached to agent."]
+
+        results = []
+
+        # Configure regex flags
+        flags = 0 if case_sensitive else re.IGNORECASE
+
+        try:
+            # Compile the pattern to validate it
+            compiled_pattern = re.compile(pattern, flags)
+        except re.error as e:
+            return [f"Invalid regex pattern '{pattern}': {str(e)}"]
+
+        for file_agent in file_agents:
+            file = None
+            try:
+                # Get file content
+                file = await self.source_manager.get_file_by_id(file_id=file_agent.file_id, actor=self.actor, include_content=True)
+
+                if not file or not file.content:
+                    continue
+
+                # Search for pattern in file content
+                lines = file.content.split("\n")
+                for line_num, line in enumerate(lines, 1):
+                    if compiled_pattern.search(line):
+                        # Format: filename:line_number:matching_line
+                        results.append(f"{file.file_name}:{line_num}:{line.strip()}")
+
+            except Exception as e:
+                # Use file_agent.file_name as fallback if file object is None
+                file_name = file.file_name if file and hasattr(file, 'file_name') else file_agent.file_name
+                results.append(f"Error searching {file_name}: {str(e)}")
+
+        if not results:
+            return [f"No matches found for pattern '{pattern}'"]
+
+        return results
+
     async def search_files(self, agent_state: AgentState, query: str) -> List[str]:
         """Search for text within attached files and return passages with their source filenames."""
         passages = await self.agent_manager.list_source_passages_async(actor=self.actor, agent_id=agent_state.id, query_text=query)
