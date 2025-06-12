@@ -38,8 +38,19 @@ class AsyncBaseMCPClient:
         response = await self.session.list_tools()
         return response.tools
 
-    async def execute_tool(self, tool_name: str, tool_args: dict) -> Tuple[str, bool]:
+    async def execute_tool(self, tool_name: str, tool_args: dict, agent_id: Optional[str] = None) -> Tuple[str, bool]:
         self._check_initialized()
+
+        # Inject agent_id into tool arguments for security purposes
+        if tool_args is None:
+            tool_args = {}
+
+        # Add agent_id to the tool arguments if provided
+        if agent_id is not None:
+            # Create a copy to avoid modifying the original
+            tool_args = tool_args.copy()
+            tool_args["_letta_agent_id"] = agent_id
+
         result = await self.session.call_tool(tool_name, tool_args)
         parsed_content = []
         for content_piece in result.content:

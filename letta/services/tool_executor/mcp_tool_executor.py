@@ -33,10 +33,13 @@ class ExternalMCPToolExecutor(ToolExecutor):
             raise ValueError(f"Tool {tool.name} does not have a valid MCP server tag")
         mcp_server_name = mcp_server_tag[0].split(":")[1]
 
+        # Extract agent ID for security purposes
+        agent_id = agent_state.id if agent_state else None
+
         mcp_manager = MCPManager()
         # TODO: may need to have better client connection management
         function_response, success = await mcp_manager.execute_mcp_server_tool(
-            mcp_server_name=mcp_server_name, tool_name=function_name, tool_args=function_args, actor=actor
+            mcp_server_name=mcp_server_name, tool_name=function_name, tool_args=function_args, actor=actor, agent_id=agent_id
         )
 
         return ToolExecutionResult(

@@ -52,7 +52,7 @@ class MCPManager:
 
     @enforce_types
     async def execute_mcp_server_tool(
-        self, mcp_server_name: str, tool_name: str, tool_args: Optional[Dict[str, Any]], actor: PydanticUser
+        self, mcp_server_name: str, tool_name: str, tool_args: Optional[Dict[str, Any]], actor: PydanticUser, agent_id: Optional[str] = None
     ) -> Tuple[str, bool]:
         """Call a specific tool from a specific MCP server."""
 
@@ -78,8 +78,10 @@ class MCPManager:
         await mcp_client.connect_to_server()
 
         # call tool
-        result, success = await mcp_client.execute_tool(tool_name, tool_args)
+        result, success = await mcp_client.execute_tool(tool_name, tool_args, agent_id=agent_id)
         logger.info(f"MCP Result: {result}, Success: {success}")
+        if agent_id:
+            logger.debug(f"MCP tool '{tool_name}' executed for agent_id: {agent_id}")
         # TODO: change to pydantic tool
 
         await mcp_client.cleanup()
