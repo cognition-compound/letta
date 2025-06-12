@@ -66,12 +66,45 @@ Letta uses a dual-path file processing system to handle document ingestion and m
 - **Impact**: Poor error visibility during streaming with file attachments
 - **Priority**: Medium - affects debugging experience
 
+## Completed Improvements (2025-01-06)
+
+### File Content Storage Unification ✅ RESOLVED
+- **DirectoryConnector**: Added `load_file_content()` method and content storage logic
+- **FileProcessor**: Already stores content via `source_manager.upsert_file_content()`
+- **Result**: Both processing paths now store file content consistently in database
+- **Impact**: `open_file` tool works for all processing paths
+
+### File Visibility Enhancement ✅ RESOLVED
+- **Location**: `letta/services/source_manager.py:337-338`
+- **Fix**: Removed `processing_status=FileProcessingStatus.COMPLETED` filter
+- **Result**: Files appear immediately after upload with processing status visible
+- **UX Impact**: Users see files with progress instead of waiting for completion
+
+### File Status Tracking ✅ RESOLVED
+- **DirectoryConnector**: Added proper `update_file_status()` calls throughout processing
+- **Result**: Files properly transition through PENDING → PARSING → COMPLETED states
+- **Impact**: File processing status accurately reflects current state
+
+## File Tool Improvements
+
+### Enhanced Tool Implementations ✅ COMPLETED
+- **`grep` tool**: Now supports regex patterns with line numbers and proper error handling
+- **`list_files` tool**: New tool showing all accessible files with processing status
+- **`search_files` schema**: Fixed return type to match actual implementation
+- **Error handling**: Better object tracking in processed_files list
+
+### Tool Performance Optimizations
+- Cache file_id in block metadata to avoid repeated lookups (future)
+- Implement content-aware chunking for different file types (future)
+- Add pagination to search results (future)
+
 ## Future Improvements
 
-### File Content Storage Unification
-- Legacy path now stores content in database (fixed)
-- Cloud path properly stores via `source_manager.upsert_file_content()`
-- Consider making path selection more explicit/configurable
+### Enhanced File Tools (Future)
+- `goto_line` - Jump to specific line with context
+- `list_functions` - Extract function/class definitions  
+- `find_definition` - Locate symbol definitions
+- `diff_files` - Compare file contents
 
 ### Tool Sandbox Architecture
 - Tools execute in isolated Python subprocesses
