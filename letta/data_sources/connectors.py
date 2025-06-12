@@ -5,6 +5,7 @@ import typer
 from letta.constants import EMBEDDING_BATCH_SIZE
 from letta.data_sources.connectors_helper import assert_all_files_exist_locally, extract_metadata_from_files, get_filenames_in_dir
 from letta.embeddings import embedding_model
+from letta.schemas.enums import FileProcessingStatus
 from letta.schemas.file import FileMetadata
 from letta.schemas.passage import Passage
 from letta.schemas.source import Source
@@ -51,6 +52,7 @@ async def load_data(
     embedding_to_document_name = {}
     passage_count = 0
     file_count = 0
+    processed_files = []  # Track all processed files for status updates
 
     async def generate_embeddings(
         texts: List[str], 
@@ -103,34 +105,52 @@ async def load_data(
     for file_metadata in connector.find_files(source):
         file_count += 1
         await source_manager.create_file(file_metadata, actor)
+        processed_files.append(file_metadata)  # Track this file for status update
 
-        # generate passages
-        for passage_text, passage_metadata in connector.generate_passages(file_metadata, chunk_size=embedding_config.embedding_chunk_size):
-            # for some reason, llama index parsers sometimes return empty strings
-            if len(passage_text) == 0:
-                typer.secho(
-                    f"Warning: Llama index parser returned empty string, skipping insert of passage with metadata '{passage_metadata}' into VectorDB. You can usually ignore this warning.",
-                    fg=typer.colors.YELLOW,
-                )
-                continue
+        try:
+            # generate passages
+            for passage_text, passage_metadata in connector.generate_passages(file_metadata, chunk_size=embedding_config.embedding_chunk_size):
+                # for some reason, llama index parsers sometimes return empty strings
+                if len(passage_text) == 0:
+                    typer.secho(
+                        f"Warning: Llama index parser returned empty string, skipping insert of passage with metadata '{passage_metadata}' into VectorDB. You can usually ignore this warning.",
+                        fg=typer.colors.YELLOW,
+                    )
+                    continue
 
-            # accumulate batch data
-            texts.append(passage_text)
-            file_metadatas.append(file_metadata)
-            passage_metadatas.append(passage_metadata)
-            
-            if len(texts) >= EMBEDDING_BATCH_SIZE:
-                # Process batch
-                passages = await generate_embeddings(texts, file_metadatas, passage_metadatas, embedding_config)
-                # Reset batch lists
-                texts = []
-                file_metadatas = []
-                passage_metadatas = []
+                # accumulate batch data
+                texts.append(passage_text)
+                file_metadatas.append(file_metadata)
+                passage_metadatas.append(passage_metadata)
                 
-                # insert passages into passage store
-                # Use the deprecated method for now as it handles mixed passage types
-                await passage_manager.create_many_passages_async(passages, actor)
-                passage_count += len(passages)
+                if len(texts) >= EMBEDDING_BATCH_SIZE:
+                    # Process batch
+                    passages = await generate_embeddings(texts, file_metadatas, passage_metadatas, embedding_config)
+                    # Reset batch lists
+                    texts = []
+                    file_metadatas = []
+                    passage_metadatas = []
+                    
+                    # insert passages into passage store
+                    # Use the deprecated method for now as it handles mixed passage types
+                    await passage_manager.create_many_passages_async(passages, actor)
+                    passage_count += len(passages)
+        except Exception as e:
+            # Mark this file as failed
+            try:
+                await source_manager.update_file_status(
+                    file_id=file_metadata.id, 
+                    actor=actor, 
+                    processing_status=FileProcessingStatus.ERROR,
+                    error_message=str(e)
+                )
+            except Exception as status_error:
+                typer.secho(
+                    f"Error: Failed to process file {file_metadata.file_name}: {str(e)} AND failed to update status: {str(status_error)}",
+                    fg=typer.colors.RED,
+                )
+            # Remove from processed_files so it doesn't get marked as COMPLETED later
+            processed_files.remove(file_metadata)
 
     # Process final remaining batch
     if len(texts) > 0:
@@ -138,6 +158,20 @@ async def load_data(
         # Use the deprecated method for now as it handles mixed passage types
         await passage_manager.create_many_passages_async(passages, actor)
         passage_count += len(passages)
+
+    # Update file processing status to COMPLETED for all successfully processed files
+    for file_metadata in processed_files:
+        try:
+            await source_manager.update_file_status(
+                file_id=file_metadata.id, 
+                actor=actor, 
+                processing_status=FileProcessingStatus.COMPLETED
+            )
+        except Exception as e:
+            typer.secho(
+                f"Warning: Failed to update status for file {file_metadata.file_name}: {str(e)}",
+                fg=typer.colors.YELLOW,
+            )
 
     return passage_count, file_count
 
