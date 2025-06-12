@@ -57,3 +57,13 @@ async def search_files(agent_state: "AgentState", query: str) -> List[str]:
         List[str]: List of formatted search results with filename prefixes.
     """
     raise NotImplementedError("Tool not implemented. Please contact the Letta team.")
+
+
+async def list_files(agent_state: "AgentState") -> List[str]:
+    """
+    List all files that the agent has access to, showing their current status.
+
+    Returns:
+        List[str]: List of files with their processing status in format "filename (status)".
+    """
+    raise NotImplementedError("Tool not implemented. Please contact the Letta team.")

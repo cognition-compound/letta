@@ -58,6 +58,7 @@ class LettaFileToolExecutor(ToolExecutor):
             "close_file": self.close_file,
             "grep": self.grep,
             "search_files": self.search_files,
+            "list_files": self.list_files,
         }
 
         if function_name not in function_map:
@@ -107,7 +108,7 @@ class LettaFileToolExecutor(ToolExecutor):
         # TODO: Split code differently from large text blurbs
         if not file or not file.content:
             raise ValueError(f"File {file_name} has no content or could not be loaded")
-        
+
         content_lines = LineChunker().chunk_text(text=file.content, start=start, end=end)
         visible_content = "\n".join(content_lines)
 
@@ -161,7 +162,7 @@ class LettaFileToolExecutor(ToolExecutor):
 
             except Exception as e:
                 # Use file_agent.file_name as fallback if file object is None
-                file_name = file.file_name if file and hasattr(file, 'file_name') else file_agent.file_name
+                file_name = file.file_name if file and hasattr(file, "file_name") else file_agent.file_name
                 results.append(f"Error searching {file_name}: {str(e)}")
 
         if not results:
@@ -180,3 +181,39 @@ class LettaFileToolExecutor(ToolExecutor):
                 formatted_result = p.text
             formatted_results.append(formatted_result)
         return formatted_results
+
+    async def list_files(self, agent_state: AgentState) -> List[str]:
+        """List all files that the agent has access to, showing their current status."""
+        # Get all file agents for this agent
+        file_agents = await self.files_agents_manager.list_files_for_agent(agent_id=agent_state.id, actor=self.actor)
+
+        if not file_agents:
+            return ["No files attached to agent."]
+
+        results = []
+
+        for file_agent in file_agents:
+            try:
+                # Get file metadata including processing status
+                file = await self.source_manager.get_file_by_id(file_id=file_agent.file_id, actor=self.actor, include_content=False)
+
+                if file:
+                    # Format: filename (status) [open/closed]
+                    open_status = "open" if file_agent.is_open else "closed"
+                    status_info = f"{file.processing_status.value}"
+                    if file.error_message:
+                        status_info += f" - {file.error_message}"
+
+                    result = f"{file.file_name} ({status_info}) [{open_status}]"
+                    results.append(result)
+                else:
+                    # Fallback if file metadata not found
+                    open_status = "open" if file_agent.is_open else "closed"
+                    results.append(f"{file_agent.file_name} (unknown status) [{open_status}]")
+
+            except Exception as e:
+                # Handle errors gracefully
+                file_name = getattr(file_agent, "file_name", "unknown")
+                results.append(f"{file_name} (error: {str(e)})")
+
+        return results
