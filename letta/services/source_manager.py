@@ -334,6 +334,8 @@ class SourceManager:
                 organization_id=actor.organization_id,
                 source_id=source_id,
                 query_options=options,
+                check_is_deleted=True,  # Filter out soft-deleted files
+                processing_status=FileProcessingStatus.COMPLETED,  # Only show completed files
             )
             return [await file.to_pydantic_async(include_content=include_content) for file in files]
 
