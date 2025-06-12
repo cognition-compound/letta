@@ -10,8 +10,8 @@ from letta.schemas.user import User as PydanticUser
 from letta.schemas.user import UserUpdate
 from letta.server.db import db_registry
 from letta.services.organization_manager import OrganizationManager
-from letta.utils import enforce_types
 from letta.settings import settings
+from letta.utils import enforce_types
 
 
 class UserManager:

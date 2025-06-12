@@ -22,7 +22,13 @@ from letta.otel.context import get_ctx_attributes
 from letta.otel.metric_registry import MetricRegistry
 from letta.otel.tracing import tracer
 from letta.schemas.enums import MessageRole
-from letta.schemas.letta_message_content import ImageContent, OmittedReasoningContent, ReasoningContent, RedactedReasoningContent, TextContent
+from letta.schemas.letta_message_content import (
+    ImageContent,
+    OmittedReasoningContent,
+    ReasoningContent,
+    RedactedReasoningContent,
+    TextContent,
+)
 from letta.schemas.llm_config import LLMConfig
 from letta.schemas.message import Message, MessageCreate, ToolReturn
 from letta.schemas.tool_execution_result import ToolExecutionResult
@@ -409,12 +415,12 @@ def get_user_message_from_chat_completions_request(completion_request: Completio
         raise HTTPException(status_code=400, detail="'messages[-1].role' must be a 'user'")
 
     input_message = messages[-1]
-    
+
     # Handle both string content (legacy) and multimodal content (new)
     content = input_message.get("content")
     if content is None:
         raise HTTPException(status_code=400, detail="'messages[-1].content' is required")
-    
+
     # Parse content into structured format
     if isinstance(content, str):
         # Legacy string format - convert to TextContent
@@ -426,7 +432,7 @@ def get_user_message_from_chat_completions_request(completion_request: Completio
             if not isinstance(part, dict):
                 logger.error(f"Invalid content part format: {part}")
                 raise HTTPException(status_code=400, detail="Each content part must be a dictionary")
-            
+
             part_type = part.get("type")
             if part_type == "text":
                 text = part.get("text", "")
@@ -444,11 +450,11 @@ def get_user_message_from_chat_completions_request(completion_request: Completio
                 else:
                     logger.error(f"Invalid image_url format: {image_url_data}")
                     raise HTTPException(status_code=400, detail="image_url must be a string or object with 'url' field")
-                
+
                 if not image_url:
                     logger.error(f"Empty image URL in content part: {part}")
                     raise HTTPException(status_code=400, detail="image_url cannot be empty")
-                
+
                 try:
                     message_content.append(ImageContent(image_url=image_url, detail=detail))
                 except ValueError as e:
@@ -457,7 +463,7 @@ def get_user_message_from_chat_completions_request(completion_request: Completio
             else:
                 # Skip unknown content types with warning
                 logger.warning(f"Skipping unsupported content type: {part_type}")
-        
+
         if not message_content:
             raise HTTPException(status_code=400, detail="No valid content parts found in multimodal message")
     else:
@@ -467,6 +473,6 @@ def get_user_message_from_chat_completions_request(completion_request: Completio
     for message in reversed(messages):
         if message["role"] == "user":
             return [MessageCreate(role=MessageRole.user, content=message_content)]
-    
+
     # Fallback - this shouldn't happen given the validation above
     raise HTTPException(status_code=400, detail="No user message found in the request")

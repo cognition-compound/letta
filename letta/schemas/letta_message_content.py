@@ -159,7 +159,9 @@ class OmittedReasoningContent(MessageContent):
 
 
 LettaMessageContentUnion = Annotated[
-    Union[TextContent, ImageContent, ToolCallContent, ToolReturnContent, ReasoningContent, RedactedReasoningContent, OmittedReasoningContent],
+    Union[
+        TextContent, ImageContent, ToolCallContent, ToolReturnContent, ReasoningContent, RedactedReasoningContent, OmittedReasoningContent
+    ],
     Field(discriminator="type"),
 ]
 

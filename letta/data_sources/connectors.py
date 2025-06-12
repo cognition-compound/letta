@@ -56,10 +56,7 @@ async def load_data(
     failed_file_ids = set()  # Track files that failed processing
 
     async def generate_embeddings(
-        texts: List[str], 
-        file_metadatas: List[FileMetadata], 
-        passage_metadatas: List[Dict],
-        embedding_config: EmbeddingConfig
+        texts: List[str], file_metadatas: List[FileMetadata], passage_metadatas: List[Dict], embedding_config: EmbeddingConfig
     ) -> List[Passage]:
         passages = []
         if embedding_config.embedding_endpoint_type == "openai":
@@ -102,7 +99,7 @@ async def load_data(
     texts = []
     file_metadatas = []
     passage_metadatas = []
-    
+
     for file_metadata in connector.find_files(source):
         file_count += 1
         await source_manager.create_file(file_metadata, actor)
@@ -112,14 +109,12 @@ async def load_data(
             # Load and store full file content
             full_content = connector.load_file_content(file_metadata)
             if full_content:
-                await source_manager.upsert_file_content(
-                    file_id=file_metadata.id,
-                    text=full_content,
-                    actor=actor
-                )
-            
+                await source_manager.upsert_file_content(file_id=file_metadata.id, text=full_content, actor=actor)
+
             # generate passages
-            for passage_text, passage_metadata in connector.generate_passages(file_metadata, chunk_size=embedding_config.embedding_chunk_size):
+            for passage_text, passage_metadata in connector.generate_passages(
+                file_metadata, chunk_size=embedding_config.embedding_chunk_size
+            ):
                 # for some reason, llama index parsers sometimes return empty strings
                 if len(passage_text) == 0:
                     typer.secho(
@@ -132,7 +127,7 @@ async def load_data(
                 texts.append(passage_text)
                 file_metadatas.append(file_metadata)
                 passage_metadatas.append(passage_metadata)
-                
+
                 if len(texts) >= EMBEDDING_BATCH_SIZE:
                     # Process batch
                     passages = await generate_embeddings(texts, file_metadatas, passage_metadatas, embedding_config)
@@ -140,7 +135,7 @@ async def load_data(
                     texts = []
                     file_metadatas = []
                     passage_metadatas = []
-                    
+
                     # insert passages into passage store
                     # Use the deprecated method for now as it handles mixed passage types
                     await passage_manager.create_many_passages_async(passages, actor)
@@ -149,10 +144,7 @@ async def load_data(
             # Mark this file as failed
             try:
                 await source_manager.update_file_status(
-                    file_id=file_metadata.id, 
-                    actor=actor, 
-                    processing_status=FileProcessingStatus.ERROR,
-                    error_message=str(e)
+                    file_id=file_metadata.id, actor=actor, processing_status=FileProcessingStatus.ERROR, error_message=str(e)
                 )
             except Exception as status_error:
                 typer.secho(
@@ -175,11 +167,7 @@ async def load_data(
         if file_metadata.id in failed_file_ids:
             continue
         try:
-            await source_manager.update_file_status(
-                file_id=file_metadata.id, 
-                actor=actor, 
-                processing_status=FileProcessingStatus.COMPLETED
-            )
+            await source_manager.update_file_status(file_id=file_metadata.id, actor=actor, processing_status=FileProcessingStatus.COMPLETED)
         except Exception as e:
             typer.secho(
                 f"Warning: Failed to update status for file {file_metadata.file_name}: {str(e)}",
@@ -237,15 +225,16 @@ class DirectoryConnector(DataConnector):
     def load_file_content(self, file: FileMetadata) -> Optional[str]:
         """Load the full content of a file for storage in the FileContent table."""
         from llama_index.core import SimpleDirectoryReader
-        
+
         try:
             if file.file_type == "application/pdf":
                 from llama_index.readers.file import PDFReader
+
                 reader = PDFReader()
                 documents = reader.load_data(file=file.file_path)
             else:
                 documents = SimpleDirectoryReader(input_files=[file.file_path]).load_data()
-            
+
             # Combine all document content into a single string
             full_content = "\n".join([doc.text for doc in documents])
             return full_content
