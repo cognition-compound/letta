@@ -53,6 +53,7 @@ async def load_data(
     passage_count = 0
     file_count = 0
     processed_files = []  # Track all processed files for status updates
+    failed_file_ids = set()  # Track files that failed processing
 
     async def generate_embeddings(
         texts: List[str], 
@@ -158,8 +159,8 @@ async def load_data(
                     f"Error: Failed to process file {file_metadata.file_name}: {str(e)} AND failed to update status: {str(status_error)}",
                     fg=typer.colors.RED,
                 )
-            # Remove from processed_files so it doesn't get marked as COMPLETED later
-            processed_files.remove(file_metadata)
+            # Mark this file as failed so it doesn't get marked as COMPLETED later
+            failed_file_ids.add(file_metadata.id)
 
     # Process final remaining batch
     if len(texts) > 0:
@@ -170,6 +171,9 @@ async def load_data(
 
     # Update file processing status to COMPLETED for all successfully processed files
     for file_metadata in processed_files:
+        # Skip files that failed processing
+        if file_metadata.id in failed_file_ids:
+            continue
         try:
             await source_manager.update_file_status(
                 file_id=file_metadata.id, 
