@@ -1,4 +1,4 @@
-from typing import Dict, Iterator, List, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 
 import typer
 
@@ -108,6 +108,15 @@ async def load_data(
         processed_files.append(file_metadata)  # Track this file for status update
 
         try:
+            # Load and store full file content
+            full_content = connector.load_file_content(file_metadata)
+            if full_content:
+                await source_manager.upsert_file_content(
+                    file_id=file_metadata.id,
+                    text=full_content,
+                    actor=actor
+                )
+            
             # generate passages
             for passage_text, passage_metadata in connector.generate_passages(file_metadata, chunk_size=embedding_config.embedding_chunk_size):
                 # for some reason, llama index parsers sometimes return empty strings
@@ -220,6 +229,28 @@ class DirectoryConnector(DataConnector):
                 file_creation_date=metadata.get("file_creation_date"),
                 file_last_modified_date=metadata.get("file_last_modified_date"),
             )
+
+    def load_file_content(self, file: FileMetadata) -> Optional[str]:
+        """Load the full content of a file for storage in the FileContent table."""
+        from llama_index.core import SimpleDirectoryReader
+        
+        try:
+            if file.file_type == "application/pdf":
+                from llama_index.readers.file import PDFReader
+                reader = PDFReader()
+                documents = reader.load_data(file=file.file_path)
+            else:
+                documents = SimpleDirectoryReader(input_files=[file.file_path]).load_data()
+            
+            # Combine all document content into a single string
+            full_content = "\n".join([doc.text for doc in documents])
+            return full_content
+        except Exception as e:
+            typer.secho(
+                f"Warning: Failed to load content for file {file.file_name}: {str(e)}",
+                fg=typer.colors.YELLOW,
+            )
+            return None
 
     def generate_passages(self, file: FileMetadata, chunk_size: int = 1024) -> Iterator[Tuple[str, Dict]]:
         from llama_index.core import SimpleDirectoryReader
