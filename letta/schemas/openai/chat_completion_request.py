@@ -3,6 +3,20 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, field_validator
 
 
+# Content types for multimodal messages
+class TextContentPart(BaseModel):
+    type: Literal["text"] = "text"
+    text: str
+
+
+class ImageUrlContentPart(BaseModel):
+    type: Literal["image_url"] = "image_url"
+    image_url: Union[str, Dict[str, Any]]  # Can be string URL or {"url": "...", "detail": "..."}
+
+
+ContentPart = Union[TextContentPart, ImageUrlContentPart]
+
+
 class SystemMessage(BaseModel):
     content: str
     role: str = "system"
@@ -10,7 +24,7 @@ class SystemMessage(BaseModel):
 
 
 class UserMessage(BaseModel):
-    content: Union[str, List[str]]
+    content: Union[str, List[ContentPart]]
     role: str = "user"
     name: Optional[str] = None
 
@@ -27,7 +41,7 @@ class ToolCall(BaseModel):
 
 
 class AssistantMessage(BaseModel):
-    content: Optional[str] = None
+    content: Optional[Union[str, List[ContentPart]]] = None
     role: str = "assistant"
     name: Optional[str] = None
     tool_calls: Optional[List[ToolCall]] = None
