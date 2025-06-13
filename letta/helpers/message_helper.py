@@ -1,6 +1,11 @@
+import base64
+import mimetypes
+
+import httpx
+
 from letta import system
 from letta.schemas.enums import MessageRole
-from letta.schemas.letta_message_content import TextContent, ImageContent, LettaMessageContentUnion
+from letta.schemas.letta_message_content import Base64Image, ImageContent, ImageSourceType, TextContent
 from letta.schemas.message import Message, MessageCreate
 
 
@@ -31,50 +36,41 @@ def _convert_message_create_to_message(
     # TODO: This seems like extra boilerplate with little benefit
     assert isinstance(message_create, MessageCreate)
 
-    # Handle different content types
+    # Extract message content
     if isinstance(message_create.content, str):
-        # Legacy string content - convert to TextContent and apply wrapping
+        assert message_create.content != "", "Message content must not be empty"
+        message_content = [TextContent(text=message_create.content)]
+    elif isinstance(message_create.content, list) and len(message_create.content) > 0:
         message_content = message_create.content
-
-        # Apply wrapping if needed
-        if message_create.role not in {MessageRole.user, MessageRole.system}:
-            raise ValueError(f"Invalid message role: {message_create.role}")
-        elif message_create.role == MessageRole.user and wrap_user_message:
-            message_content = system.package_user_message(user_message=message_content)
-        elif message_create.role == MessageRole.system and wrap_system_message:
-            message_content = system.package_system_message(system_message=message_content)
-
-        final_content = [TextContent(text=message_content)] if message_content else []
-
-    elif message_create.content and len(message_create.content) > 0:
-        # Multimodal content - preserve all content types
-        if message_create.role not in {MessageRole.user, MessageRole.system}:
-            raise ValueError(f"Invalid message role: {message_create.role}")
-
-        # For multimodal content, we need to handle wrapping carefully
-        # Only wrap text content, preserve image content as-is
-        final_content = []
-        for content_item in message_create.content:
-            if isinstance(content_item, TextContent):
-                text_content = content_item.text
-                if message_create.role == MessageRole.user and wrap_user_message:
-                    text_content = system.package_user_message(user_message=text_content)
-                elif message_create.role == MessageRole.system and wrap_system_message:
-                    text_content = system.package_system_message(system_message=text_content)
-                final_content.append(TextContent(text=text_content))
-            elif isinstance(content_item, ImageContent):
-                # Preserve ImageContent as-is
-                final_content.append(content_item)
-            else:
-                # For other content types, preserve as-is
-                final_content.append(content_item)
     else:
         raise ValueError("Message content is empty or invalid")
+
+    assert message_create.role in {MessageRole.user, MessageRole.system}, f"Invalid message role: {message_create.role}"
+    for content in message_content:
+        if isinstance(content, TextContent):
+            # Apply wrapping if needed
+            if message_create.role == MessageRole.user and wrap_user_message:
+                content.text = system.package_user_message(user_message=content.text)
+            elif message_create.role == MessageRole.system and wrap_system_message:
+                content.text = system.package_system_message(system_message=content.text)
+        elif isinstance(content, ImageContent):
+            if content.source.type == ImageSourceType.url:
+                # Convert URL image to Base64Image if needed
+                image_response = httpx.get(content.source.url)
+                image_response.raise_for_status()
+                image_media_type = image_response.headers.get("content-type")
+                if not image_media_type:
+                    image_media_type, _ = mimetypes.guess_type(content.source.url)
+                image_data = base64.standard_b64encode(image_response.content).decode("utf-8")
+                content.source = Base64Image(media_type=image_media_type, data=image_data)
+            if content.source.type == ImageSourceType.letta and not content.source.data:
+                # TODO: hydrate letta image with data from db
+                pass
 
     return Message(
         agent_id=agent_id,
         role=message_create.role,
-        content=final_content,
+        content=message_content,
         name=message_create.name,
         model=None,  # assigned later?
         tool_calls=None,  # irrelevant

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import copy
 import json
 import re
@@ -9,8 +8,6 @@ import warnings
 from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Union
-from urllib.parse import urlparse
-from urllib.request import urlopen
 
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall as OpenAIToolCall
 from openai.types.chat.chat_completion_message_tool_call import Function as OpenAIFunction
@@ -416,32 +413,20 @@ class Message(BaseMessage):
                 )
             )
         elif self.role == MessageRole.user:
-            # This is type UserMessage - handle both text-only and multimodal content
-            text_content = None
-
-            if self.content:
-                # Extract text content from multimodal message
-                text_parts = [content for content in self.content if isinstance(content, TextContent)]
-                if text_parts:
-                    text_content = text_parts[0].text
-                elif len(self.content) == 1 and isinstance(self.content[0], TextContent):
-                    text_content = self.content[0].text
-                else:
-                    # For multimodal messages without text, create a placeholder
-                    has_images = any(isinstance(content, ImageContent) for content in self.content)
-                    if has_images:
-                        text_content = "[Image message]"
-                    else:
-                        raise ValueError(f"Invalid user message (no text object on message): {self.content}")
+            # This is type UserMessage
+            if self.content and len(self.content) == 1 and isinstance(self.content[0], TextContent):
+                text_content = self.content[0].text
+            elif self.content:
+                text_content = self.content
             else:
-                raise ValueError(f"Invalid user message (no content): {self.content}")
+                raise ValueError(f"Invalid user message (no text object on message): {self.content}")
 
-            message_str = unpack_message(text_content)
+            message = unpack_message(text_content)
             messages.append(
                 UserMessage(
                     id=self.id,
                     date=self.created_at,
-                    content=self.content if self.content else [TextContent(text=message_str or text_content)],
+                    content=message,
                     name=self.name,
                     otid=self.otid,
                     sender_id=self.sender_id,
@@ -494,36 +479,10 @@ class Message(BaseMessage):
         assert "role" in openai_message_dict, openai_message_dict
         assert "content" in openai_message_dict, openai_message_dict
 
-        # Handle both string content and multimodal content (list of parts)
-        content = []
-        if openai_message_dict["content"] is not None:
-            if isinstance(openai_message_dict["content"], str):
-                # Simple text content
-                content = [TextContent(text=openai_message_dict["content"])]
-            elif isinstance(openai_message_dict["content"], list):
-                # Multimodal content - parse each part
-                for part in openai_message_dict["content"]:
-                    if not isinstance(part, dict) or "type" not in part:
-                        raise ValueError(f"Invalid content part format: {part}")
-
-                    if part["type"] == "text":
-                        content.append(TextContent(text=part.get("text", "")))
-                    elif part["type"] == "image_url":
-                        image_url_data = part.get("image_url", {})
-                        if isinstance(image_url_data, str):
-                            # Handle simple string format
-                            image_url = image_url_data
-                            detail = "auto"
-                        else:
-                            # Handle object format
-                            image_url = image_url_data.get("url", "")
-                            detail = image_url_data.get("detail", "auto")
-                        content.append(ImageContent(image_url=image_url, detail=detail))
-                    else:
-                        # Skip unknown content types for now
-                        continue
-            else:
-                raise ValueError(f"Invalid content type: {type(openai_message_dict['content'])}")
+        # TODO(caren) implicit support for only non-parts/list content types
+        if openai_message_dict["content"] is not None and type(openai_message_dict["content"]) is not str:
+            raise ValueError(f"Invalid content type: {type(openai_message_dict['content'])}")
+        content = [TextContent(text=openai_message_dict["content"])] if openai_message_dict["content"] else []
 
         # TODO(caren) bad assumption here that "reasoning_content" always comes before "redacted_reasoning_content"
         if "reasoning_content" in openai_message_dict and openai_message_dict["reasoning_content"]:
@@ -695,92 +654,49 @@ class Message(BaseMessage):
     ) -> dict:
         """Go from Message class to ChatCompletion message object"""
 
-        # Parse content into text content and multimodal content parts
+        # TODO change to pydantic casting, eg `return SystemMessageModel(self)`
+        # If we only have one content part and it's text, treat it as COT
         parse_content_parts = False
-        text_content = None
-        content_parts = []
+        if self.content and len(self.content) == 1 and isinstance(self.content[0], TextContent):
+            text_content = self.content[0].text
+        elif self.content and len(self.content) == 1 and isinstance(self.content[0], ToolReturnContent):
+            text_content = self.content[0].content
+        elif self.content and len(self.content) == 1 and isinstance(self.content[0], ImageContent):
+            text_content = "[Image Here]"
+        # Otherwise, check if we have TextContent and multiple other parts
+        elif self.content and len(self.content) > 1:
+            text = [content for content in self.content if isinstance(content, TextContent)]
+            assert len(text) == 1, f"multiple text content parts found in a single message: {self.content}"
+            text_content = text[0].text
+            parse_content_parts = True
+        else:
+            text_content = None
 
-        if self.content:
-            # Check if we have multimodal content (text + images)
-            has_images = any(isinstance(content, ImageContent) for content in self.content)
-            text_parts = [content for content in self.content if isinstance(content, TextContent)]
-
-            if has_images or len(self.content) > 1:
-                # Multimodal content - build content array
-                for content_part in self.content:
-                    if isinstance(content_part, TextContent):
-                        content_parts.append({"type": "text", "text": content_part.text})
-                    elif isinstance(content_part, ImageContent):
-                        content_parts.append(
-                            {"type": "image_url", "image_url": {"url": content_part.image_url, "detail": content_part.detail or "auto"}}
-                        )
-                    elif isinstance(content_part, ToolReturnContent):
-                        # For tool returns, use text format
-                        content_parts.append({"type": "text", "text": content_part.content})
-                    elif isinstance(content_part, ReasoningContent):
-                        # For reasoning content, add as text for now
-                        parse_content_parts = True
-                        content_parts.append({"type": "text", "text": content_part.reasoning})
-                    elif isinstance(content_part, RedactedReasoningContent):
-                        parse_content_parts = True
-                        # Skip redacted content in OpenAI format
-                        continue
-                    elif isinstance(content_part, OmittedReasoningContent):
-                        parse_content_parts = True
-                        # Skip omitted content in OpenAI format
-                        continue
-            elif len(self.content) == 1:
-                # Single content part - extract text for backward compatibility
-                if isinstance(self.content[0], TextContent):
-                    text_content = self.content[0].text
-                elif isinstance(self.content[0], ToolReturnContent):
-                    text_content = self.content[0].content
-                elif isinstance(self.content[0], ReasoningContent):
-                    text_content = self.content[0].reasoning
-                    parse_content_parts = True
-                elif isinstance(self.content[0], RedactedReasoningContent):
-                    text_content = self.content[0].data
-                    parse_content_parts = True
+        # TODO(caren) we should eventually support multiple content parts here?
+        # ie, actually make dict['content'] type list
+        # But for now, it's OK until we support multi-modal,
+        # since the only "parts" we have are for supporting various COT
 
         if self.role == "system":
             assert all([v is not None for v in [self.role]]), vars(self)
-            # System messages don't support multimodal content in OpenAI API
             openai_message = {
                 "content": text_content,
                 "role": "developer" if use_developer_message else self.role,
             }
 
         elif self.role == "user":
-            # User messages support multimodal content
-            if content_parts:
-                # Multimodal content
-                openai_message = {
-                    "content": content_parts,
-                    "role": self.role,
-                }
-            else:
-                # Plain text content
-                assert text_content is not None, f"User message must have content: {vars(self)}"
-                openai_message = {
-                    "content": text_content,
-                    "role": self.role,
-                }
+            assert all([v is not None for v in [text_content, self.role]]), vars(self)
+            openai_message = {
+                "content": text_content,
+                "role": self.role,
+            }
 
         elif self.role == "assistant":
-            # Assistant messages can have multimodal content but it's less common
-            assert self.tool_calls is not None or text_content is not None or content_parts
-
-            # Use multimodal content if available and not putting thoughts in kwargs
-            if content_parts and not put_inner_thoughts_in_kwargs:
-                openai_message = {
-                    "content": content_parts,
-                    "role": self.role,
-                }
-            else:
-                openai_message = {
-                    "content": None if put_inner_thoughts_in_kwargs else text_content,
-                    "role": self.role,
-                }
+            assert self.tool_calls is not None or text_content is not None
+            openai_message = {
+                "content": None if put_inner_thoughts_in_kwargs else text_content,
+                "role": self.role,
+            }
 
             if self.tool_calls is not None:
                 if put_inner_thoughts_in_kwargs:
@@ -840,46 +756,11 @@ class Message(BaseMessage):
             inner_thoughts_xml_tag (str): The XML tag to wrap around inner thoughts
         """
 
-        # Parse content for Anthropic format (supports multimodal)
-        text_content = None
-        content_parts = []
-
-        if self.content:
-            for content_part in self.content:
-                if isinstance(content_part, TextContent):
-                    text_content = content_part.text  # Use last text content for backward compatibility
-                    content_parts.append({"type": "text", "text": content_part.text})
-                elif isinstance(content_part, ImageContent):
-                    # Anthropic supports images via base64 data URLs
-                    # Parse MIME type from data URL (e.g., "data:image/png;base64,...")
-                    media_type = "image/jpeg"  # Default fallback
-                    data = content_part.image_url
-
-                    if content_part.image_url.startswith("data:"):
-                        # Extract MIME type and base64 data from data URL
-                        try:
-                            header, base64_data = content_part.image_url.split(",", 1)
-                            mime_part = header.split(":")[1].split(";")[0]
-                            if mime_part.startswith("image/"):
-                                media_type = mime_part
-                            data = base64_data
-                        except (ValueError, IndexError):
-                            # Fallback to extracting just the data part
-                            data = content_part.image_url.split(",")[1] if "," in content_part.image_url else content_part.image_url
-
-                    content_parts.append(
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": data,
-                            },
-                        }
-                    )
-                elif isinstance(content_part, ToolReturnContent):
-                    # Handle tool returns as text
-                    content_parts.append({"type": "text", "text": content_part.content})
+        # Check for COT
+        if self.content and len(self.content) == 1 and isinstance(self.content[0], TextContent):
+            text_content = self.content[0].text
+        else:
+            text_content = None
 
         def add_xml_tag(string: str, xml_tag: Optional[str]):
             # NOTE: Anthropic docs recommends using <thinking> tag when using CoT + tool use
@@ -901,19 +782,33 @@ class Message(BaseMessage):
             }
 
         elif self.role == "user":
-            # User messages support multimodal content in Anthropic API
-            has_images = any(isinstance(part, ImageContent) for part in (self.content or []))
-            if content_parts and (len(content_parts) > 1 or has_images):
-                # Multimodal content (multiple parts or any images)
+            # special case for text-only message
+            if text_content is not None:
                 anthropic_message = {
-                    "content": content_parts,
+                    "content": text_content,
                     "role": self.role,
                 }
             else:
-                # Simple text content
-                assert text_content is not None, f"User message must have content: {vars(self)}"
+                content_parts = []
+                for content in self.content:
+                    if isinstance(content, TextContent):
+                        content_parts.append({"type": "text", "text": content.text})
+                    elif isinstance(content, ImageContent):
+                        content_parts.append(
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "data": content.source.data,
+                                    "media_type": content.source.media_type,
+                                },
+                            }
+                        )
+                    else:
+                        raise ValueError(f"Unsupported content type: {content.type}")
+
                 anthropic_message = {
-                    "content": text_content,
+                    "content": content_parts,
                     "role": self.role,
                 }
 
@@ -1001,52 +896,12 @@ class Message(BaseMessage):
         # type Content: https://ai.google.dev/api/rest/v1/Content / https://ai.google.dev/api/rest/v1beta/Content
         #     parts[]: Part
         #     role: str ('user' or 'model')
-
-        # Parse content for Google AI format (supports multimodal)
-        text_content = None
-        parts = []
-
-        if self.content:
-            for content_part in self.content:
-                if isinstance(content_part, TextContent):
-                    text_content = content_part.text  # Use last text content for backward compatibility
-                    parts.append({"text": content_part.text})
-                elif isinstance(content_part, ImageContent):
-                    # Google AI supports images via inline_data
-                    if content_part.image_url.startswith("data:"):
-                        # Handle base64 data URLs
-                        try:
-                            mime_type, base64_data = content_part.image_url.split(",", 1)
-                            mime_type = mime_type.split(":")[1].split(";")[0]
-                            parts.append({"inline_data": {"mime_type": mime_type, "data": base64_data}})
-                        except (ValueError, IndexError):
-                            # Fallback to text placeholder if parsing fails
-                            parts.append({"text": f"[Image: {content_part.image_url}]"})
-                    elif content_part.image_url.startswith(("http://", "https://")):
-                        # Fetch and encode HTTP/HTTPS URLs
-                        try:
-                            # Fetch the image
-                            with urlopen(content_part.image_url) as response:
-                                image_data = response.read()
-                                content_type = response.headers.get("content-type", "image/jpeg")
-
-                                # Ensure it's an image MIME type
-                                if content_type.startswith("image/"):
-                                    # Encode to base64
-                                    base64_data = base64.b64encode(image_data).decode("utf-8")
-                                    parts.append({"inline_data": {"mime_type": content_type, "data": base64_data}})
-                                else:
-                                    # Not an image, fallback to text placeholder
-                                    parts.append({"text": f"[Non-image URL: {content_part.image_url}]"})
-                        except Exception as e:
-                            # Fallback to text placeholder if fetching fails
-                            warnings.warn(f"Failed to fetch image from {content_part.image_url}: {e}")
-                            parts.append({"text": f"[Failed to load image: {content_part.image_url}]"})
-                    else:
-                        # Unknown URL scheme, use text placeholder
-                        parts.append({"text": f"[Image: {content_part.image_url}]"})
-                elif isinstance(content_part, ToolReturnContent):
-                    parts.append({"text": content_part.content})
+        if self.content and len(self.content) == 1 and isinstance(self.content[0], TextContent):
+            text_content = self.content[0].text
+        elif self.content and len(self.content) == 1 and isinstance(self.content[0], ToolReturnContent):
+            text_content = self.content[0].content
+        else:
+            text_content = None
 
         if self.role != "tool" and self.name is not None:
             warnings.warn(f"Using Google AI with non-null 'name' field (name={self.name} role={self.role}), not yet supported.")
@@ -1056,14 +911,31 @@ class Message(BaseMessage):
             # https://www.reddit.com/r/Bard/comments/1b90i8o/does_gemini_have_a_system_prompt_option_while/
             google_ai_message = {
                 "role": "user",  # NOTE: no 'system'
-                "parts": parts if parts else [{"text": text_content or ""}],
+                "parts": [{"text": text_content}],
             }
 
         elif self.role == "user":
-            # User messages support multimodal content in Google AI
+            assert self.content, vars(self)
+
+            content_parts = []
+            for content in self.content:
+                if isinstance(content, TextContent):
+                    content_parts.append({"text": content.text})
+                elif isinstance(content, ImageContent):
+                    content_parts.append(
+                        {
+                            "inline_data": {
+                                "data": content.source.data,
+                                "mime_type": content.source.media_type,
+                            }
+                        }
+                    )
+                else:
+                    raise ValueError(f"Unsupported content type: {content.type}")
+
             google_ai_message = {
                 "role": "user",
-                "parts": parts if parts else [{"text": text_content or ""}],
+                "parts": content_parts,
             }
 
         elif self.role == "assistant":
@@ -1074,11 +946,11 @@ class Message(BaseMessage):
 
             # NOTE: Google AI API doesn't allow non-null content + function call
             # To get around this, just two a two part message, inner thoughts first then
-            assistant_parts = []
+            parts = []
             if not put_inner_thoughts_in_kwargs and text_content is not None:
                 # NOTE: ideally we do multi-part for CoT / inner thoughts + function call, but Google AI API doesn't allow it
                 raise NotImplementedError
-                assistant_parts.append({"text": text_content})
+                parts.append({"text": text_content})
 
             if self.tool_calls is not None:
                 # NOTE: implied support for multiple calls
@@ -1097,7 +969,7 @@ class Message(BaseMessage):
                         assert len(self.tool_calls) == 1
                         function_args[INNER_THOUGHTS_KWARG_VERTEX] = text_content
 
-                    assistant_parts.append(
+                    parts.append(
                         {
                             "functionCall": {
                                 "name": function_name,
@@ -1107,8 +979,8 @@ class Message(BaseMessage):
                     )
             else:
                 assert text_content is not None
-                assistant_parts.append({"text": text_content})
-            google_ai_message["parts"] = assistant_parts
+                parts.append({"text": text_content})
+            google_ai_message["parts"] = parts
 
         elif self.role == "tool":
             # NOTE: Significantly different tool calling format, more similar to function calling format
@@ -1179,8 +1051,10 @@ class Message(BaseMessage):
         # embedded function calls in multi-turn conversation become more clear
         if self.content and len(self.content) == 1 and isinstance(self.content[0], TextContent):
             text_content = self.content[0].text
-        if self.content and len(self.content) == 1 and isinstance(self.content[0], ToolReturnContent):
+        elif self.content and len(self.content) == 1 and isinstance(self.content[0], ToolReturnContent):
             text_content = self.content[0].content
+        elif self.content and len(self.content) == 1 and isinstance(self.content[0], ImageContent):
+            text_content = "[Image Here]"
         else:
             text_content = None
         if self.role == "system":

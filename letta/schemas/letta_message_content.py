@@ -19,7 +19,7 @@ class MessageContent(BaseModel):
 
 
 # -------------------------------
-# User Content Types
+# Text Content
 # -------------------------------
 
 
@@ -28,10 +28,58 @@ class TextContent(MessageContent):
     text: str = Field(..., description="The text content of the message.")
 
 
+# -------------------------------
+# Image Content
+# -------------------------------
+
+
+class ImageSourceType(str, Enum):
+    url = "url"
+    base64 = "base64"
+    letta = "letta"
+
+
+class ImageSource(BaseModel):
+    type: ImageSourceType = Field(..., description="The source type for the image.")
+
+
+class UrlImage(ImageSource):
+    type: Literal[ImageSourceType.url] = Field(ImageSourceType.url, description="The source type for the image.")
+    url: str = Field(..., description="The URL of the image.")
+
+
+class Base64Image(ImageSource):
+    type: Literal[ImageSourceType.base64] = Field(ImageSourceType.base64, description="The source type for the image.")
+    media_type: str = Field(..., description="The media type for the image.")
+    data: str = Field(..., description="The base64 encoded image data.")
+    detail: Optional[str] = Field(
+        None,
+        description="What level of detail to use when processing and understanding the image (low, high, or auto to let the model decide)",
+    )
+
+
+class LettaImage(ImageSource):
+    type: Literal[ImageSourceType.letta] = Field(ImageSourceType.letta, description="The source type for the image.")
+    file_id: str = Field(..., description="The unique identifier of the image file persisted in storage.")
+    media_type: Optional[str] = Field(None, description="The media type for the image.")
+    data: Optional[str] = Field(None, description="The base64 encoded image data.")
+    detail: Optional[str] = Field(
+        None,
+        description="What level of detail to use when processing and understanding the image (low, high, or auto to let the model decide)",
+    )
+
+
+ImageSourceUnion = Annotated[Union[UrlImage, Base64Image, LettaImage], Field(discriminator="type")]
+
+
 class ImageContent(MessageContent):
     type: Literal[MessageContentType.image] = Field(MessageContentType.image, description="The type of the message.")
-    image_url: str = Field(..., description="The image URL or base64 data URL (e.g., 'data:image/jpeg;base64,...').")
-    detail: Optional[str] = Field("auto", description="Image detail level for vision models: 'low', 'high', or 'auto'.")
+    source: ImageSourceUnion = Field(..., description="The source of the image.")
+
+
+# -------------------------------
+# User Content Types
+# -------------------------------
 
 
 LettaUserMessageContentUnion = Annotated[

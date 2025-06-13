@@ -24,7 +24,7 @@ class SystemMessage(BaseModel):
 
 
 class UserMessage(BaseModel):
-    content: Union[str, List[ContentPart]]
+    content: Union[str, List[str], List[dict]]
     role: str = "user"
     name: Optional[str] = None
 
