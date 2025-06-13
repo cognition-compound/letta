@@ -278,6 +278,36 @@ class TestAnthropicFormatConversion:
         assert isinstance(anthropic_msg["content"], str)
         assert anthropic_msg["content"] == "Hello Claude"
 
+    def test_convert_png_image_to_anthropic_with_correct_mime_type(self):
+        """Test that Anthropic conversion correctly parses PNG MIME type from data URL"""
+        message = Message(
+            role=MessageRole.user, 
+            content=[
+                TextContent(text="Look at this PNG image"),
+                ImageContent(image_url="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==")
+            ]
+        )
+
+        anthropic_msg = message.to_anthropic_dict()
+        
+        assert len(anthropic_msg["content"]) == 2
+        img_part = anthropic_msg["content"][1]
+        assert img_part["type"] == "image"
+        assert img_part["source"]["media_type"] == "image/png"  # Should correctly parse PNG
+        assert img_part["source"]["data"] == "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
+
+    def test_convert_webp_image_to_anthropic_with_correct_mime_type(self):
+        """Test that Anthropic conversion correctly parses WebP MIME type from data URL"""
+        message = Message(
+            role=MessageRole.user,
+            content=[ImageContent(image_url="data:image/webp;base64,UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA")]
+        )
+
+        anthropic_msg = message.to_anthropic_dict()
+        
+        img_part = anthropic_msg["content"][0]
+        assert img_part["source"]["media_type"] == "image/webp"  # Should correctly parse WebP
+
 
 class TestGoogleAIFormatConversion:
     """Test converting messages to Google AI format"""
@@ -306,19 +336,32 @@ class TestGoogleAIFormatConversion:
         assert img_part["inline_data"]["mime_type"] == "image/jpeg"
         assert img_part["inline_data"]["data"] == "xyz789"
 
-    def test_convert_image_url_to_google_ai(self):
-        """Test converting HTTP image URL to Google AI format (should create placeholder)"""
+    def test_convert_image_url_to_google_ai_fallback(self):
+        """Test converting HTTP image URL to Google AI format falls back to placeholder on failure"""
         message = Message(
             role=MessageRole.user,
-            content=[TextContent(text="Check this image"), ImageContent(image_url="https://example.com/image.jpg")],
+            content=[TextContent(text="Check this image"), ImageContent(image_url="https://invalid-domain-that-should-not-exist.invalid/image.jpg")],
+        )
+
+        # Should fall back to text placeholder when fetch fails
+        google_msg = message.to_google_ai_dict()
+
+        img_part = google_msg["parts"][1]
+        assert "text" in img_part
+        assert "Failed to load image" in img_part["text"]
+        
+    def test_convert_unknown_scheme_to_google_ai(self):
+        """Test converting unknown URL scheme to Google AI format creates placeholder"""
+        message = Message(
+            role=MessageRole.user,
+            content=[ImageContent(image_url="ftp://example.com/image.jpg")],
         )
 
         google_msg = message.to_google_ai_dict()
 
-        # HTTP URLs should be converted to text placeholders for now
-        img_part = google_msg["parts"][1]
+        img_part = google_msg["parts"][0]
         assert "text" in img_part
-        assert "Image: https://example.com/image.jpg" in img_part["text"]
+        assert "Image: ftp://example.com/image.jpg" in img_part["text"]
 
 
 class TestEdgeCasesAndErrorHandling:

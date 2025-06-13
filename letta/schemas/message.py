@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import copy
 import json
 import re
@@ -8,6 +9,8 @@ import warnings
 from collections import OrderedDict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Union
+from urllib.parse import urlparse
+from urllib.request import urlopen
 
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall as OpenAIToolCall
 from openai.types.chat.chat_completion_message_tool_call import Function as OpenAIFunction
@@ -848,13 +851,29 @@ class Message(BaseMessage):
                     content_parts.append({"type": "text", "text": content_part.text})
                 elif isinstance(content_part, ImageContent):
                     # Anthropic supports images via base64 data URLs
+                    # Parse MIME type from data URL (e.g., "data:image/png;base64,...")
+                    media_type = "image/jpeg"  # Default fallback
+                    data = content_part.image_url
+
+                    if content_part.image_url.startswith("data:"):
+                        # Extract MIME type and base64 data from data URL
+                        try:
+                            header, base64_data = content_part.image_url.split(",", 1)
+                            mime_part = header.split(":")[1].split(";")[0]
+                            if mime_part.startswith("image/"):
+                                media_type = mime_part
+                            data = base64_data
+                        except (ValueError, IndexError):
+                            # Fallback to extracting just the data part
+                            data = content_part.image_url.split(",")[1] if "," in content_part.image_url else content_part.image_url
+
                     content_parts.append(
                         {
                             "type": "image",
                             "source": {
                                 "type": "base64",
-                                "media_type": "image/jpeg",  # Default, could be parsed from data URL
-                                "data": content_part.image_url.split(",")[1] if "," in content_part.image_url else content_part.image_url,
+                                "media_type": media_type,
+                                "data": data,
                             },
                         }
                     )
@@ -883,8 +902,9 @@ class Message(BaseMessage):
 
         elif self.role == "user":
             # User messages support multimodal content in Anthropic API
-            if content_parts and len(content_parts) > 1:
-                # Multimodal content
+            has_images = any(isinstance(part, ImageContent) for part in (self.content or []))
+            if content_parts and (len(content_parts) > 1 or has_images):
+                # Multimodal content (multiple parts or any images)
                 anthropic_message = {
                     "content": content_parts,
                     "role": self.role,
@@ -995,11 +1015,35 @@ class Message(BaseMessage):
                     # Google AI supports images via inline_data
                     if content_part.image_url.startswith("data:"):
                         # Handle base64 data URLs
-                        mime_type, base64_data = content_part.image_url.split(",", 1)
-                        mime_type = mime_type.split(":")[1].split(";")[0]
-                        parts.append({"inline_data": {"mime_type": mime_type, "data": base64_data}})
+                        try:
+                            mime_type, base64_data = content_part.image_url.split(",", 1)
+                            mime_type = mime_type.split(":")[1].split(";")[0]
+                            parts.append({"inline_data": {"mime_type": mime_type, "data": base64_data}})
+                        except (ValueError, IndexError):
+                            # Fallback to text placeholder if parsing fails
+                            parts.append({"text": f"[Image: {content_part.image_url}]"})
+                    elif content_part.image_url.startswith(("http://", "https://")):
+                        # Fetch and encode HTTP/HTTPS URLs
+                        try:
+                            # Fetch the image
+                            with urlopen(content_part.image_url) as response:
+                                image_data = response.read()
+                                content_type = response.headers.get("content-type", "image/jpeg")
+
+                                # Ensure it's an image MIME type
+                                if content_type.startswith("image/"):
+                                    # Encode to base64
+                                    base64_data = base64.b64encode(image_data).decode("utf-8")
+                                    parts.append({"inline_data": {"mime_type": content_type, "data": base64_data}})
+                                else:
+                                    # Not an image, fallback to text placeholder
+                                    parts.append({"text": f"[Non-image URL: {content_part.image_url}]"})
+                        except Exception as e:
+                            # Fallback to text placeholder if fetching fails
+                            warnings.warn(f"Failed to fetch image from {content_part.image_url}: {e}")
+                            parts.append({"text": f"[Failed to load image: {content_part.image_url}]"})
                     else:
-                        # For regular URLs, we'd need to fetch and encode - skip for now
+                        # Unknown URL scheme, use text placeholder
                         parts.append({"text": f"[Image: {content_part.image_url}]"})
                 elif isinstance(content_part, ToolReturnContent):
                     parts.append({"text": content_part.content})
