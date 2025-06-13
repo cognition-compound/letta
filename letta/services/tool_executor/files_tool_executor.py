@@ -73,7 +73,6 @@ class LettaFileToolExecutor(ToolExecutor):
             "close_file": self.close_file,
             "grep": self.grep,
             "search_files": self.search_files,
-            "list_files": self.list_files,
         }
 
         if function_name not in function_map:
@@ -121,14 +120,7 @@ class LettaFileToolExecutor(ToolExecutor):
         # TODO: Inefficient, maybe we can pre-compute this
         # TODO: This is also not the best way to split things - would be cool to have "content aware" splitting
         # TODO: Split code differently from large text blurbs
-<<<<<<< HEAD
-        if not file or not file.content:
-            raise ValueError(f"File {file_name} has no content or could not be loaded")
-
-        content_lines = LineChunker().chunk_text(text=file.content, start=start, end=end)
-=======
         content_lines = LineChunker().chunk_text(text=file.content, file_metadata=file, start=start, end=end)
->>>>>>> main
         visible_content = "\n".join(content_lines)
 
         await self.files_agents_manager.update_file_agent_by_id(
@@ -144,100 +136,6 @@ class LettaFileToolExecutor(ToolExecutor):
         )
         return "Success"
 
-<<<<<<< HEAD
-    async def grep(self, agent_state: AgentState, pattern: str, case_sensitive: bool = False) -> List[str]:
-        """Search for pattern across all attached files using regex/string matching."""
-        # Get all file agents for this agent
-        file_agents = await self.files_agents_manager.list_files_for_agent(agent_id=agent_state.id, actor=self.actor)
-
-        if not file_agents:
-            return ["No files attached to agent."]
-
-        results = []
-
-        # Configure regex flags
-        flags = 0 if case_sensitive else re.IGNORECASE
-
-        try:
-            # Compile the pattern to validate it
-            compiled_pattern = re.compile(pattern, flags)
-        except re.error as e:
-            return [f"Invalid regex pattern '{pattern}': {str(e)}"]
-
-        for file_agent in file_agents:
-            file = None
-            try:
-                # Get file content
-                file = await self.source_manager.get_file_by_id(file_id=file_agent.file_id, actor=self.actor, include_content=True)
-
-                if not file or not file.content:
-                    continue
-
-                # Search for pattern in file content
-                lines = file.content.split("\n")
-                for line_num, line in enumerate(lines, 1):
-                    if compiled_pattern.search(line):
-                        # Format: filename:line_number:matching_line
-                        results.append(f"{file.file_name}:{line_num}:{line.strip()}")
-
-            except Exception as e:
-                # Use file_agent.file_name as fallback if file object is None
-                file_name = file.file_name if file and hasattr(file, "file_name") else file_agent.file_name
-                results.append(f"Error searching {file_name}: {str(e)}")
-
-        if not results:
-            return [f"No matches found for pattern '{pattern}'"]
-
-        return results
-
-    async def search_files(self, agent_state: AgentState, query: str) -> List[str]:
-        """Search for text within attached files and return passages with their source filenames."""
-        passages = await self.agent_manager.list_source_passages_async(actor=self.actor, agent_id=agent_state.id, query_text=query)
-        formatted_results = []
-        for p in passages:
-            if p.file_name:
-                formatted_result = f"[{p.file_name}]:\n{p.text}"
-            else:
-                formatted_result = p.text
-            formatted_results.append(formatted_result)
-        return formatted_results
-
-    async def list_files(self, agent_state: AgentState) -> List[str]:
-        """List all files that the agent has access to, showing their current status."""
-        # Get all file agents for this agent
-        file_agents = await self.files_agents_manager.list_files_for_agent(agent_id=agent_state.id, actor=self.actor)
-
-        if not file_agents:
-            return ["No files attached to agent."]
-
-        results = []
-
-        for file_agent in file_agents:
-            try:
-                # Get file metadata including processing status
-                file = await self.source_manager.get_file_by_id(file_id=file_agent.file_id, actor=self.actor, include_content=False)
-
-                if file:
-                    # Format: filename (status) [open/closed]
-                    open_status = "open" if file_agent.is_open else "closed"
-                    status_info = f"{file.processing_status.value}"
-                    if file.error_message:
-                        status_info += f" - {file.error_message}"
-
-                    result = f"{file.file_name} ({status_info}) [{open_status}]"
-                    results.append(result)
-                else:
-                    # Fallback if file metadata not found
-                    open_status = "open" if file_agent.is_open else "closed"
-                    results.append(f"{file_agent.file_name} (unknown status) [{open_status}]")
-
-            except Exception as e:
-                # Handle errors gracefully
-                file_name = getattr(file_agent, "file_name", "unknown")
-                results.append(f"{file_name} (error: {str(e)})")
-
-        return results
-=======
     def _validate_regex_pattern(self, pattern: str) -> None:
         """Validate regex pattern to prevent catastrophic backtracking."""
         if len(pattern) > self.MAX_REGEX_COMPLEXITY:
@@ -514,4 +412,3 @@ class LettaFileToolExecutor(ToolExecutor):
         self.logger.info(f"Semantic search completed: {total_passages} matches across {file_count} files")
 
         return "\n".join(formatted_results)
->>>>>>> main
