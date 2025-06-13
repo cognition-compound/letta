@@ -5,15 +5,18 @@ This test suite covers:
 - ImageContent class creation and validation
 - Multimodal message parsing from OpenAI format
 - Message conversion to OpenAI, Anthropic, and Google AI formats
+- Message block integration for preserving image content
 - Edge cases and error handling
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
+from uuid import uuid4
 
 import pytest
 
 from letta.schemas.enums import MessageRole
+from letta.schemas.letta_message import UserMessage
 from letta.schemas.letta_message_content import (
     ImageContent,
     LettaMessageContentUnion,
@@ -365,6 +368,70 @@ class TestEdgeCasesAndErrorHandling:
         # Test to_letta_messages conversion handles multimodal content
         letta_messages = message.to_letta_messages()
         assert len(letta_messages) > 0
+
+
+class TestMessageBlockIntegration:
+    """Test that multimodal messages work properly with message blocks."""
+
+    def test_multimodal_message_to_letta_messages_preserves_images(self):
+        """Test that converting multimodal Message to LettaMessage preserves image content."""
+        # Create a multimodal message with text and image
+        text_content = TextContent(text="Can you see this image?")
+        image_content = ImageContent(
+            image_url="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...",
+            detail="high"
+        )
+        
+        message = Message(
+            id=uuid4(),
+            role=MessageRole.user,
+            content=[text_content, image_content],
+            created_at=datetime.now(timezone.utc),
+        )
+
+        # Convert to LettaMessage format
+        letta_messages = message.to_letta_messages()
+
+        # Should have one UserMessage with preserved multimodal content
+        assert len(letta_messages) == 1
+        assert isinstance(letta_messages[0], UserMessage)
+        
+        # Content should be the original multimodal content, not just text
+        assert letta_messages[0].content == [text_content, image_content]
+        assert len(letta_messages[0].content) == 2
+        
+        # Check that both text and image are preserved
+        assert isinstance(letta_messages[0].content[0], TextContent)
+        assert isinstance(letta_messages[0].content[1], ImageContent)
+        assert letta_messages[0].content[0].text == "Can you see this image?"
+        assert letta_messages[0].content[1].image_url == "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ..."
+
+    def test_image_only_message_to_letta_messages(self):
+        """Test that image-only messages are properly converted."""
+        # Create an image-only message
+        image_content = ImageContent(
+            image_url="https://example.com/image.jpg", detail="low"
+        )
+        
+        message = Message(
+            id=uuid4(),
+            role=MessageRole.user,
+            content=[image_content],
+            created_at=datetime.now(timezone.utc),
+        )
+
+        # Convert to LettaMessage format
+        letta_messages = message.to_letta_messages()
+
+        # Should have one UserMessage with preserved image content
+        assert len(letta_messages) == 1
+        assert isinstance(letta_messages[0], UserMessage)
+        
+        # Content should be the original image content
+        assert letta_messages[0].content == [image_content]
+        assert len(letta_messages[0].content) == 1
+        assert isinstance(letta_messages[0].content[0], ImageContent)
+        assert letta_messages[0].content[0].image_url == "https://example.com/image.jpg"
 
 
 class TestBackwardsCompatibility:

@@ -438,7 +438,7 @@ class Message(BaseMessage):
                 UserMessage(
                     id=self.id,
                     date=self.created_at,
-                    content=message_str or text_content,
+                    content=self.content if self.content else [TextContent(text=message_str or text_content)],
                     name=self.name,
                     otid=self.otid,
                     sender_id=self.sender_id,
