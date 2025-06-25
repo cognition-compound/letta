@@ -1,91 +1,132 @@
-# Start with pgvector base for builder
-FROM ankane/pgvector:v0.5.1 AS builder
+# syntax=docker/dockerfile:1
 
-# Install Python and required packages
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-venv \
-    python3-pip \
-    python3-full \
-    build-essential \
-    libpq-dev \
-    python3-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Multi-stage build for optimized Letta container with tini init system
+# Integrates optimizations from mithrilmind while maintaining pgvector compatibility
 
+# ================================
+# Builder stage - compile dependencies
+# ================================
+FROM python:3.12-slim AS builder
+
+# Install build dependencies
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+        python3-dev \
+        git \
+        curl \
+        && rm -rf /var/lib/apt/lists/*
+
+# Set up build environment
 ARG LETTA_ENVIRONMENT=PRODUCTION
 ENV LETTA_ENVIRONMENT=${LETTA_ENVIRONMENT} \
     POETRY_NO_INTERACTION=1 \
     POETRY_VIRTUALENVS_IN_PROJECT=1 \
     POETRY_VIRTUALENVS_CREATE=1 \
-    POETRY_CACHE_DIR=/tmp/poetry_cache
+    POETRY_CACHE_DIR=/tmp/poetry_cache \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
-# Set for other builds
-ARG LETTA_VERSION
-ENV LETTA_VERSION=${LETTA_VERSION}
+WORKDIR /build
 
-WORKDIR /app
+# Install Poetry with caching
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    pip install poetry==2.1.3
 
-# Create and activate virtual environment
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Now install poetry in the virtual environment
-RUN pip install --no-cache-dir poetry==2.1.3
-
-# Copy dependency files first
+# Copy dependency files for better caching
 COPY pyproject.toml poetry.lock ./
-# Then copy the rest of the application code
+
+# Install dependencies with caching
+RUN --mount=type=cache,target=/tmp/poetry_cache,sharing=locked \
+    --mount=type=cache,target=/root/.cache/pypoetry,sharing=locked \
+    poetry install --all-extras && \
+    poetry build
+
+# Copy source code
 COPY . .
 
-RUN poetry lock && \
-    poetry install --all-extras && \
-    rm -rf $POETRY_CACHE_DIR
+# ================================
+# Runtime stage - optimized production image
+# ================================
+FROM python:3.12-slim AS runtime
 
-# Runtime stage
-FROM ankane/pgvector:v0.5.1 AS runtime
+# Metadata
+LABEL org.opencontainers.image.source="https://github.com/letta-ai/letta"
+LABEL org.opencontainers.image.description="Letta AI server with pgvector support and OpenTelemetry"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
 
-# Overridable Node.js version with --build-arg NODE_VERSION
+# Set versions as build args for better caching
 ARG NODE_VERSION=22
+ARG LETTA_VERSION
+ARG LETTA_ENVIRONMENT=PRODUCTION
 
-RUN apt-get update && \
-    # Install curl and Python
-    apt-get install -y curl python3 python3-venv && \
-    # Install Node.js
+# Install tini for proper init system
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        tini \
+        postgresql-client \
+        libpq5 \
+        ca-certificates \
+        curl \
+        && \
+    # Install Node.js for frontend/tooling support
     curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - && \
-    apt-get install -y nodejs && \
-    # Install OpenTelemetry Collector
-    curl -L https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.96.0/otelcol-contrib_0.96.0_linux_amd64.tar.gz -o /tmp/otel-collector.tar.gz && \
-    tar xzf /tmp/otel-collector.tar.gz -C /usr/local/bin && \
-    rm /tmp/otel-collector.tar.gz && \
-    mkdir -p /etc/otel && \
+    apt-get install -y --no-install-recommends nodejs && \
+    # Clean up
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Add OpenTelemetry Collector configs
-COPY otel/otel-collector-config-file.yaml /etc/otel/config-file.yaml
-COPY otel/otel-collector-config-clickhouse.yaml /etc/otel/config-clickhouse.yaml
-
-ARG LETTA_ENVIRONMENT=PRODUCTION
+# Set up Python environment
 ENV LETTA_ENVIRONMENT=${LETTA_ENVIRONMENT} \
-    VIRTUAL_ENV="/app/.venv" \
-    PATH="/app/.venv/bin:$PATH" \
-    POSTGRES_USER=letta \
-    POSTGRES_PASSWORD=letta \
-    POSTGRES_DB=letta \
-    COMPOSIO_DISABLE_VERSION_CHECK=true
-
-ARG LETTA_VERSION
-ENV LETTA_VERSION=${LETTA_VERSION}
+    LETTA_VERSION=${LETTA_VERSION} \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    COMPOSIO_DISABLE_VERSION_CHECK=true \
+    VIRTUAL_ENV=/app/.venv \
+    PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 
-# Copy virtual environment and app from builder
-COPY --from=builder /app .
+# Create virtual environment and install from builder
+COPY --from=builder /build/dist/*.whl /tmp/
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    python -m venv /app/.venv && \
+    /app/.venv/bin/pip install --prefer-binary /tmp/*.whl && \
+    /app/.venv/bin/pip install \
+        pgvector psycopg2-binary \
+        fastapi uvicorn[standard] python-multipart websockets \
+        asyncpg sqlalchemy[asyncio] alembic && \
+    rm -f /tmp/*.whl
 
-# Copy initialization SQL if it exists
-COPY init.sql /docker-entrypoint-initdb.d/
+# Copy application source
+COPY --from=builder /build/. ./
+RUN rm -rf .venv dist/ build/
 
-EXPOSE 8283 5432 4317 4318
+# Copy and setup startup script
+COPY letta/server/startup.sh /usr/local/bin/startup.sh
+RUN chmod +x /usr/local/bin/startup.sh
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["./letta/server/startup.sh"]
+# Create app directories and set permissions
+RUN mkdir -p /app/.letta/logs /app/.letta/tool_execution_dir && \
+    chmod 755 /app/.letta/logs /app/.letta/tool_execution_dir
+
+# Create non-root user for security (commented out for backward compatibility)
+# RUN useradd -m -u 1000 letta && \
+#     chown -R letta:letta /app /app/.letta
+# USER letta
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8283/v1/health || exit 1
+
+# Expose ports
+EXPOSE 8283
+
+# Use tini as init system for proper signal handling
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/usr/local/bin/startup.sh"]
