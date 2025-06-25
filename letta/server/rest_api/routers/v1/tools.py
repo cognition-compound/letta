@@ -493,6 +493,7 @@ async def add_mcp_tool(
 )
 async def add_mcp_server_to_config(
     request: Union[StdioServerConfig, SSEServerConfig, StreamableHTTPServerConfig] = Body(...),
+    auto_register_tools: bool = True,
     server: SyncServer = Depends(get_letta_server),
     actor_id: Optional[str] = Header(None, alias="user_id"),
 ):
@@ -526,7 +527,11 @@ async def add_mcp_server_to_config(
                     server_name=request.server_name, server_type=request.type, server_url=request.server_url, token=request.resolve_token()
                 )
 
-            await server.mcp_manager.create_mcp_server(mapped_request, actor=actor)
+            await server.mcp_manager.create_mcp_server(
+                mapped_request, 
+                actor=actor,
+                auto_register_tools=auto_register_tools
+            )
 
             # TODO: don't do this in the future (just return MCPServer)
             all_servers = await server.mcp_manager.list_mcp_servers(actor=actor)
@@ -603,3 +608,55 @@ async def delete_mcp_server_from_config(
         # TODO: don't do this in the future (just return MCPServer)
         all_servers = await server.mcp_manager.list_mcp_servers(actor=actor)
         return [server.to_config() for server in all_servers]
+
+
+@router.post(
+    "/mcp/servers/{mcp_server_name}/discover-tools",
+    response_model=dict,
+    operation_id="discover_mcp_server_tools"
+)
+async def discover_mcp_server_tools(
+    mcp_server_name: str,
+    server: SyncServer = Depends(get_letta_server),
+    actor_id: Optional[str] = Header(None, alias="user_id"),
+):
+    """
+    Discover and register all tools from an existing MCP server.
+    Useful for migrating servers registered before auto-discovery was implemented.
+    """
+    try:
+        actor = await server.user_manager.get_actor_or_default_async(actor_id=actor_id)
+        
+        # Verify the server exists
+        server_id = await server.mcp_manager.get_mcp_server_id_by_name(mcp_server_name, actor)
+        if not server_id:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "MCPServerNotFoundError", 
+                    "message": f"MCP server '{mcp_server_name}' not found",
+                    "server_name": mcp_server_name,
+                }
+            )
+        
+        # Trigger tool discovery
+        successful_tools, failed_tools = await server.mcp_manager._auto_register_mcp_tools_async(
+            mcp_server_name, actor
+        )
+        
+        return {
+            "server_name": mcp_server_name,
+            "successful_tools": len(successful_tools),
+            "failed_tools": len(failed_tools),
+            "successful_tool_names": [tool.name for tool in successful_tools],
+            "failed_tool_details": failed_tools,
+            "message": f"Tool discovery completed for server '{mcp_server_name}'"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to discover tools for server '{mcp_server_name}': {str(e)}"
+        )

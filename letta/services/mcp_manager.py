@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -149,8 +150,70 @@ class MCPManager:
         return mcp_server
 
     @enforce_types
-    async def create_mcp_server(self, pydantic_mcp_server: MCPServer, actor: PydanticUser) -> MCPServer:
-        """Create a new MCP server."""
+    async def _auto_register_mcp_tools_async(
+        self, 
+        mcp_server_name: str, 
+        actor: PydanticUser
+    ) -> Tuple[List[PydanticTool], List[str]]:
+        """Discover and register all tools from an MCP server with parallel execution."""
+        
+        # 1. Discover all available tools from MCP server
+        try:
+            mcp_tools = await self.list_mcp_server_tools(mcp_server_name, actor=actor)
+        except Exception as e:
+            logger.error(f"Failed to list tools from MCP server {mcp_server_name}: {e}")
+            return [], [f"Failed to discover tools: {str(e)}"]
+        
+        if not mcp_tools:
+            logger.info(f"No tools found on MCP server {mcp_server_name}")
+            return [], []
+        
+        # 2. Create list of async tool registration coroutines
+        tool_creation_tasks = []
+        for mcp_tool in mcp_tools:
+            try:
+                tool_create = ToolCreate.from_mcp(mcp_server_name=mcp_server_name, mcp_tool=mcp_tool)
+                task = self.tool_manager.create_mcp_tool_async(
+                    tool_create=tool_create, 
+                    mcp_server_name=mcp_server_name, 
+                    actor=actor
+                )
+                tool_creation_tasks.append((mcp_tool.name, task))
+            except Exception as e:
+                logger.warning(f"Failed to create registration task for tool {mcp_tool.name}: {e}")
+        
+        # 3. Execute all registrations in parallel with error handling
+        if not tool_creation_tasks:
+            return [], ["No valid tools to register"]
+        
+        tasks = [task for _, task in tool_creation_tasks]
+        task_names = [name for name, _ in tool_creation_tasks]
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 4. Separate successful tools from errors
+        successful_tools = []
+        failed_tools = []
+        
+        for i, result in enumerate(results):
+            tool_name = task_names[i]
+            if isinstance(result, Exception):
+                failed_tools.append(f"{tool_name}: {str(result)}")
+                logger.warning(f"Failed to register tool {tool_name}: {result}")
+            else:
+                successful_tools.append(result)
+                logger.debug(f"Successfully registered tool: {tool_name}")
+        
+        return successful_tools, failed_tools
+
+    @enforce_types
+    async def create_mcp_server(
+        self, 
+        pydantic_mcp_server: MCPServer, 
+        actor: PydanticUser,
+        auto_register_tools: bool = True
+    ) -> MCPServer:
+        """Create a new MCP server and optionally auto-register all available tools."""
         async with db_registry.async_session() as session:
             # Set the organization id at the ORM layer
             pydantic_mcp_server.organization_id = actor.organization_id
@@ -158,6 +221,21 @@ class MCPManager:
 
             mcp_server = MCPServerModel(**mcp_server_data)
             mcp_server = await mcp_server.create_async(session, actor=actor)
+            
+            # Auto-register tools if requested
+            if auto_register_tools:
+                try:
+                    successful_tools, failed_tools = await self._auto_register_mcp_tools_async(
+                        mcp_server.server_name, 
+                        actor
+                    )
+                    logger.info(f"Auto-registered {len(successful_tools)} tools for server {mcp_server.server_name}")
+                    if failed_tools:
+                        logger.warning(f"Failed to register {len(failed_tools)} tools: {failed_tools}")
+                except Exception as e:
+                    logger.warning(f"Failed to auto-register tools for server {mcp_server.server_name}: {e}")
+                    # Don't fail server creation if tool registration fails
+                    
             return mcp_server.to_pydantic()
 
     @enforce_types
