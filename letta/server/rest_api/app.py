@@ -80,7 +80,11 @@ def generate_openapi_schema(app: FastAPI):
     ]:
         if settings.cors_origins:
             docs["servers"] = [{"url": host} for host in settings.cors_origins]
-        Path(f"openapi_{name}.json").write_text(json.dumps(docs, indent=2))
+        # Write OpenAPI schema to a writable directory
+        import os
+        openapi_dir = os.environ.get('LETTA_OPENAPI_DIR', '/tmp')
+        openapi_path = Path(openapi_dir) / f"openapi_{name}.json"
+        openapi_path.write_text(json.dumps(docs, indent=2))
 
 
 # middleware that only allows requests to pass through if user provides a password thats randomly generated and stored in memory

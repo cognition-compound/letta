@@ -1,0 +1,226 @@
+---
+# Kubernetes deployment configuration for Letta
+# Addresses all identified filesystem write operations and volume requirements
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: letta-data-pvc
+  labels:
+    app: letta
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: fast-ssd  # Uncomment and specify your storage class
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: letta-config
+  labels:
+    app: letta
+data:
+  # Optional: Pre-configure Letta settings
+  LETTA_DEBUG: "false"
+  LETTA_LOG_LEVEL: "INFO"
+  LETTA_ENVIRONMENT: "PRODUCTION"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: letta-server
+  labels:
+    app: letta
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: letta
+  template:
+    metadata:
+      labels:
+        app: letta
+    spec:
+      # Security context to handle file permissions
+      securityContext:
+        fsGroup: 1000
+        runAsNonRoot: false  # Required for chmod 777 in startup script
+      
+      initContainers:
+      # Optional: Wait for PostgreSQL to be ready
+      - name: wait-for-postgres
+        image: postgres:15-alpine
+        command: ['sh', '-c']
+        args:
+          - |
+            until pg_isready -h $(echo $LETTA_PG_URI | sed -n 's/.*@\([^:]*\):.*/\1/p') \
+                           -p $(echo $LETTA_PG_URI | sed -n 's/.*:\([0-9]*\)\/.*/\1/p') \
+                           -U $(echo $LETTA_PG_URI | sed -n 's/.*:\/\/\([^:]*\):.*/\1/p'); do
+              echo "Waiting for PostgreSQL..."
+              sleep 2
+            done
+        env:
+        - name: LETTA_PG_URI
+          valueFrom:
+            secretKeyRef:
+              name: letta-secrets
+              key: postgres-uri
+
+      containers:
+      - name: letta
+        image: ghcr.io/letta-ai/letta:latest
+        ports:
+        - containerPort: 8283
+          name: http
+        
+        # Environment configuration addressing all filesystem concerns
+        env:
+        # Core Letta directories (mapped to persistent volume)
+        - name: LETTA_DIR
+          value: "/app/data"
+        
+        # Tool execution directory (within persistent volume)
+        - name: LETTA_SANDBOX_MOUNT_PATH
+          value: "/app/data/tool_execution_dir"
+        
+        # OpenAPI directory (mapped to temporary volume)
+        - name: LETTA_OPENAPI_DIR
+          value: "/tmp/openapi"
+        
+        # Database connection (from secret)
+        - name: LETTA_PG_URI
+          valueFrom:
+            secretKeyRef:
+              name: letta-secrets
+              key: postgres-uri
+        
+        # Server configuration
+        - name: HOST
+          value: "0.0.0.0"
+        - name: PORT
+          value: "8283"
+        - name: SECURE
+          value: "true"
+        
+        # Import from ConfigMap
+        envFrom:
+        - configMapRef:
+            name: letta-config
+        
+        # Volume mounts addressing all identified write locations
+        volumeMounts:
+        # Main data directory (persistent)
+        - name: letta-data
+          mountPath: /app/data
+        
+        # Temporary files and OpenAPI docs (temporary)
+        - name: letta-tmp
+          mountPath: /tmp
+        
+        # Optional: Separate logs volume for easier monitoring
+        - name: letta-logs
+          mountPath: /app/data/logs
+        
+        # Resource limits
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /v1/health
+            port: 8283
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /v1/health
+            port: 8283
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+      volumes:
+      # Persistent volume for all Letta data
+      - name: letta-data
+        persistentVolumeClaim:
+          claimName: letta-data-pvc
+      
+      # Temporary volume for OpenAPI docs and temp files
+      - name: letta-tmp
+        emptyDir:
+          sizeLimit: 1Gi
+      
+      # Optional: Separate volume for logs (can be emptyDir or PVC)
+      - name: letta-logs
+        emptyDir:
+          sizeLimit: 500Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: letta-service
+  labels:
+    app: letta
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8283
+    targetPort: 8283
+    protocol: TCP
+    name: http
+  selector:
+    app: letta
+
+---
+# Secret for sensitive configuration (create manually)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: letta-secrets
+  labels:
+    app: letta
+type: Opaque
+data:
+  # Base64 encoded PostgreSQL URI
+  # Example: echo -n "postgresql://user:pass@postgres:5432/letta" | base64
+  postgres-uri: cG9zdGdyZXNxbDovL3VzZXI6cGFzc0Bwb3N0Z3Jlczo1NDMyL2xldHRh
+
+---
+# Optional: Ingress for external access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: letta-ingress
+  labels:
+    app: letta
+  annotations:
+    # Add your ingress controller annotations here
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  rules:
+  - host: letta.example.com  # Replace with your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: letta-service
+            port:
+              number: 8283

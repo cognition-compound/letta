@@ -87,6 +87,7 @@ ENV LETTA_ENVIRONMENT=${LETTA_ENVIRONMENT} \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     COMPOSIO_DISABLE_VERSION_CHECK=true \
+    LETTA_OPENAPI_DIR=/tmp \
     VIRTUAL_ENV=/app/.venv \
     PATH="/app/.venv/bin:$PATH"
 
@@ -112,8 +113,8 @@ COPY letta/server/startup.sh /usr/local/bin/startup.sh
 RUN chmod +x /usr/local/bin/startup.sh
 
 # Create app directories and set permissions
-RUN mkdir -p /app/.letta/logs /app/.letta/tool_execution_dir && \
-    chmod 755 /app/.letta/logs /app/.letta/tool_execution_dir
+RUN mkdir -p /app/.letta/logs /app/.letta/tool_execution_dir /app/openapi && \
+    chmod 755 /app/.letta/logs /app/.letta/tool_execution_dir /app/openapi
 
 # Create non-root user for security (commented out for backward compatibility)
 # RUN useradd -m -u 1000 letta && \
