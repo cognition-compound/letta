@@ -359,3 +359,148 @@ class TestMCPAutoDiscovery:
         
         # Run the async test
         asyncio.run(test_execution())
+
+    @pytest.mark.asyncio
+    async def test_cleanup_stale_tools(self, mock_user, mock_mcp_tools):
+        """Test that stale tools are properly cleaned up during auto-discovery."""
+        mcp_manager = MCPManager()
+        
+        # Create existing tools (including some that will become stale)
+        existing_tools = [
+            PydanticTool(
+                id="tool-stale-1",
+                name="stale_tool_1",
+                tool_type=ToolType.EXTERNAL_MCP,
+                source_code="def stale_tool_1(): pass",
+                json_schema={"name": "stale_tool_1", "type": "function"}
+            ),
+            PydanticTool(
+                id="tool-existing-1", 
+                name="test_tool_1",  # This one exists in mock_mcp_tools
+                tool_type=ToolType.EXTERNAL_MCP,
+                source_code="def test_tool_1(): pass",
+                json_schema={"name": "test_tool_1", "type": "function"}
+            ),
+            PydanticTool(
+                id="tool-stale-2",
+                name="stale_tool_2", 
+                tool_type=ToolType.EXTERNAL_MCP,
+                source_code="def stale_tool_2(): pass",
+                json_schema={"name": "stale_tool_2", "type": "function"}
+            )
+        ]
+        
+        # Mock getting existing tools
+        with patch.object(mcp_manager, '_get_existing_mcp_tools_async', new=AsyncMock(return_value=existing_tools)):
+            # Mock getting current MCP tools
+            with patch.object(mcp_manager, 'list_mcp_server_tools', new=AsyncMock(return_value=mock_mcp_tools)):
+                # Mock tool deletion
+                with patch.object(mcp_manager.tool_manager, 'delete_tool_by_id_async', new=AsyncMock()) as mock_delete:
+                    # Mock tool registration
+                    with patch.object(mcp_manager.tool_manager, 'create_mcp_tool_async', new=AsyncMock()) as mock_create:
+                        mock_create.return_value = PydanticTool(
+                            id="new-tool-id",
+                            name="test_tool",
+                            tool_type=ToolType.EXTERNAL_MCP,
+                            source_code="def test_tool(): pass",
+                            json_schema={"name": "test_tool", "type": "function"}
+                        )
+                        
+                        successful_tools, failed_tools = await mcp_manager._auto_register_mcp_tools_async(
+                            "test-mcp-server", mock_user
+                        )
+                        
+                        # Verify stale tools were deleted
+                        assert mock_delete.call_count == 2  # stale_tool_1 and stale_tool_2
+                        deleted_tool_ids = {call[1]['tool_id'] for call in mock_delete.call_args_list}
+                        assert "tool-stale-1" in deleted_tool_ids
+                        assert "tool-stale-2" in deleted_tool_ids
+                        
+                        # Verify current tools were registered
+                        assert mock_create.call_count == 3  # All 3 tools from mock_mcp_tools
+                        
+                        # Should have successful registrations and no failures
+                        assert len(successful_tools) == 3
+                        assert len(failed_tools) == 0
+
+    @pytest.mark.asyncio
+    async def test_cleanup_handles_deletion_failures(self, mock_user, mock_mcp_tools):
+        """Test that cleanup handles tool deletion failures gracefully.""" 
+        mcp_manager = MCPManager()
+        
+        # Create existing stale tools
+        stale_tools = [
+            PydanticTool(
+                id="tool-stale-1",
+                name="stale_tool_1",
+                tool_type=ToolType.EXTERNAL_MCP, 
+                source_code="def stale_tool_1(): pass",
+                json_schema={"name": "stale_tool_1", "type": "function"}
+            ),
+            PydanticTool(
+                id="tool-stale-2",
+                name="stale_tool_2",
+                tool_type=ToolType.EXTERNAL_MCP,
+                source_code="def stale_tool_2(): pass", 
+                json_schema={"name": "stale_tool_2", "type": "function"}
+            )
+        ]
+        
+        # Mock getting existing tools
+        with patch.object(mcp_manager, '_get_existing_mcp_tools_async', new=AsyncMock(return_value=stale_tools)):
+            # Mock getting current MCP tools (empty - all existing tools are stale)
+            with patch.object(mcp_manager, 'list_mcp_server_tools', new=AsyncMock(return_value=[])):
+                # Mock tool deletion to fail for first tool, succeed for second
+                with patch.object(mcp_manager.tool_manager, 'delete_tool_by_id_async', new=AsyncMock()) as mock_delete:
+                    def deletion_side_effect(tool_id, actor):
+                        if tool_id == "tool-stale-1":
+                            raise Exception("Deletion failed")
+                        return None
+                    
+                    mock_delete.side_effect = deletion_side_effect
+                    
+                    successful_tools, failed_tools = await mcp_manager._auto_register_mcp_tools_async(
+                        "test-mcp-server", mock_user
+                    )
+                    
+                    # Should have attempted to delete both stale tools
+                    assert mock_delete.call_count == 2
+                    
+                    # Should report deletion failure but continue operation
+                    assert len(failed_tools) == 1
+                    assert "Failed to delete stale_tool_1: Deletion failed" in failed_tools[0]
+                    
+                    # No successful tools since MCP server has no tools
+                    assert len(successful_tools) == 0
+
+    @pytest.mark.asyncio
+    async def test_get_existing_mcp_tools_async(self, mock_user):
+        """Test querying existing MCP tools from database."""
+        mcp_manager = MCPManager()
+        
+        # Mock database session and query
+        with patch('letta.services.mcp_manager.db_registry.async_session') as mock_session:
+            mock_session_instance = AsyncMock()
+            mock_session.__aenter__.return_value = mock_session_instance
+            
+            # Mock query result
+            mock_tool = Mock()
+            mock_tool.to_pydantic.return_value = PydanticTool(
+                id="tool-1",
+                name="test_tool",
+                tool_type=ToolType.EXTERNAL_MCP,
+                source_code="def test_tool(): pass",
+                json_schema={"name": "test_tool", "type": "function"}
+            )
+            
+            mock_session_instance.scalars.return_value.all.return_value = [mock_tool]
+            
+            result = await mcp_manager._get_existing_mcp_tools_async("test-server", mock_user)
+            
+            # Should return list of pydantic tools
+            assert len(result) == 1
+            assert result[0].name == "test_tool"
+            assert result[0].tool_type == ToolType.EXTERNAL_MCP
+            
+            # Verify query was constructed correctly
+            mock_session_instance.scalars.assert_called_once()
