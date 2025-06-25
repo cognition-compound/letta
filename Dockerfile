@@ -39,14 +39,19 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
 # Copy dependency files for better caching
 COPY pyproject.toml poetry.lock ./
 
-# Install dependencies with caching
+# Install dependencies only (no root project) with caching
+RUN --mount=type=cache,target=/tmp/poetry_cache,sharing=locked \
+    --mount=type=cache,target=/root/.cache/pypoetry,sharing=locked \
+    poetry install --all-extras --no-root
+
+# Copy source code
+COPY . .
+
+# Now install the project and build
 RUN --mount=type=cache,target=/tmp/poetry_cache,sharing=locked \
     --mount=type=cache,target=/root/.cache/pypoetry,sharing=locked \
     poetry install --all-extras && \
     poetry build
-
-# Copy source code
-COPY . .
 
 # ================================
 # Runtime stage - optimized production image
