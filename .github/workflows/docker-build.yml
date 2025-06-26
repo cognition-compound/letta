@@ -26,8 +26,6 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    outputs:
-      digest: ${{ steps.build.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -95,64 +93,4 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
-  security-scan:
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.event_name != 'pull_request'
-    permissions:
-      contents: read
-      security-events: write
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-  update-compose:
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update Docker Compose files
-        run: |
-          # Update image references in compose files to use the new image
-          sed -i "s|image: letta/letta:.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest|g" compose.yaml
-          sed -i "s|image: letta/letta:.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest|g" dev-compose.yaml
-          
-          # Check if there are changes to commit
-          if git diff --quiet; then
-            echo "No changes to commit"
-          else
-            git config --local user.email "action@github.com"
-            git config --local user.name "GitHub Action"
-            git add compose.yaml dev-compose.yaml
-            git commit -m "Update Docker image references to use GHCR [skip ci]"
-            git push
-          fi
