@@ -150,16 +150,13 @@ class MCPManager:
         return mcp_server
 
     @enforce_types
-    async def _get_existing_mcp_tools_async(
-        self,
-        mcp_server_name: str, 
-        actor: PydanticUser
-    ) -> List[PydanticTool]:
+    async def _get_existing_mcp_tools_async(self, mcp_server_name: str, actor: PydanticUser) -> List[PydanticTool]:
         """Get all MCP tools currently registered for this server."""
-        from letta.orm.tool import Tool as ToolModel
         from sqlalchemy import select
+
         from letta.constants import MCP_TOOL_TAG_NAME_PREFIX
-        
+        from letta.orm.tool import Tool as ToolModel
+
         async with db_registry.async_session() as session:
             # Query tools by MCP server tag and tool type
             result = await session.scalars(
@@ -172,13 +169,9 @@ class MCPManager:
             return [tool.to_pydantic() for tool in tools]
 
     @enforce_types
-    async def _auto_register_mcp_tools_async(
-        self, 
-        mcp_server_name: str, 
-        actor: PydanticUser
-    ) -> Tuple[List[PydanticTool], List[str]]:
+    async def _auto_register_mcp_tools_async(self, mcp_server_name: str, actor: PydanticUser) -> Tuple[List[PydanticTool], List[str]]:
         """Discover and register all tools from an MCP server with parallel execution and cleanup."""
-        
+
         # 1. Get existing tools and current MCP server tools
         try:
             existing_tools = await self._get_existing_mcp_tools_async(mcp_server_name, actor)
@@ -186,14 +179,14 @@ class MCPManager:
         except Exception as e:
             logger.error(f"Failed to list tools from MCP server {mcp_server_name}: {e}")
             return [], [f"Failed to discover tools: {str(e)}"]
-        
+
         # 2. Clean up stale tools (exist in Letta but not on MCP server)
         current_tool_names = {tool.name for tool in mcp_tools}
         stale_tools = [tool for tool in existing_tools if tool.name not in current_tool_names]
-        
+
         deleted_tools = []
         cleanup_failures = []
-        
+
         for stale_tool in stale_tools:
             try:
                 await self.tool_manager.delete_tool_by_id_async(stale_tool.id, actor)
@@ -202,41 +195,37 @@ class MCPManager:
             except Exception as e:
                 cleanup_failures.append(f"Failed to delete {stale_tool.name}: {str(e)}")
                 logger.warning(f"Failed to delete stale tool {stale_tool.name}: {e}")
-        
+
         if deleted_tools:
             logger.info(f"Cleaned up {len(deleted_tools)} stale tools for server {mcp_server_name}: {deleted_tools}")
-        
+
         if not mcp_tools:
             logger.info(f"No tools found on MCP server {mcp_server_name}")
             return [], cleanup_failures
-        
+
         # 3. Create list of async tool registration coroutines
         tool_creation_tasks = []
         for mcp_tool in mcp_tools:
             try:
                 tool_create = ToolCreate.from_mcp(mcp_server_name=mcp_server_name, mcp_tool=mcp_tool)
-                task = self.tool_manager.create_mcp_tool_async(
-                    tool_create=tool_create, 
-                    mcp_server_name=mcp_server_name, 
-                    actor=actor
-                )
+                task = self.tool_manager.create_mcp_tool_async(tool_create=tool_create, mcp_server_name=mcp_server_name, actor=actor)
                 tool_creation_tasks.append((mcp_tool.name, task))
             except Exception as e:
                 logger.warning(f"Failed to create registration task for tool {mcp_tool.name}: {e}")
-        
+
         # 4. Execute all registrations in parallel with error handling
         if not tool_creation_tasks:
             return [], cleanup_failures + ["No valid tools to register"]
-        
+
         tasks = [task for _, task in tool_creation_tasks]
         task_names = [name for name, _ in tool_creation_tasks]
-        
+
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # 5. Separate successful tools from errors
         successful_tools = []
         registration_failures = []
-        
+
         for i, result in enumerate(results):
             tool_name = task_names[i]
             if isinstance(result, Exception):
@@ -245,18 +234,13 @@ class MCPManager:
             else:
                 successful_tools.append(result)
                 logger.debug(f"Successfully registered tool: {tool_name}")
-        
+
         # Combine cleanup failures and registration failures
         all_failures = cleanup_failures + registration_failures
         return successful_tools, all_failures
 
     @enforce_types
-    async def create_mcp_server(
-        self, 
-        pydantic_mcp_server: MCPServer, 
-        actor: PydanticUser,
-        auto_register_tools: bool = True
-    ) -> MCPServer:
+    async def create_mcp_server(self, pydantic_mcp_server: MCPServer, actor: PydanticUser, auto_register_tools: bool = True) -> MCPServer:
         """Create a new MCP server and optionally auto-register all available tools."""
         async with db_registry.async_session() as session:
             # Set the organization id at the ORM layer
@@ -265,21 +249,18 @@ class MCPManager:
 
             mcp_server = MCPServerModel(**mcp_server_data)
             mcp_server = await mcp_server.create_async(session, actor=actor)
-            
+
             # Auto-register tools if requested
             if auto_register_tools:
                 try:
-                    successful_tools, failed_tools = await self._auto_register_mcp_tools_async(
-                        mcp_server.server_name, 
-                        actor
-                    )
+                    successful_tools, failed_tools = await self._auto_register_mcp_tools_async(mcp_server.server_name, actor)
                     logger.info(f"Auto-registered {len(successful_tools)} tools for server {mcp_server.server_name}")
                     if failed_tools:
                         logger.warning(f"Failed to register {len(failed_tools)} tools: {failed_tools}")
                 except Exception as e:
                     logger.warning(f"Failed to auto-register tools for server {mcp_server.server_name}: {e}")
                     # Don't fail server creation if tool registration fails
-                    
+
             return mcp_server.to_pydantic()
 
     @enforce_types

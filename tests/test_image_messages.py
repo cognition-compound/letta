@@ -281,30 +281,34 @@ class TestAnthropicFormatConversion:
     def test_convert_png_image_to_anthropic_with_correct_mime_type(self):
         """Test that Anthropic conversion correctly parses PNG MIME type from data URL"""
         message = Message(
-            role=MessageRole.user, 
+            role=MessageRole.user,
             content=[
                 TextContent(text="Look at this PNG image"),
-                ImageContent(image_url="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==")
-            ]
+                ImageContent(
+                    image_url="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
+                ),
+            ],
         )
 
         anthropic_msg = message.to_anthropic_dict()
-        
+
         assert len(anthropic_msg["content"]) == 2
         img_part = anthropic_msg["content"][1]
         assert img_part["type"] == "image"
         assert img_part["source"]["media_type"] == "image/png"  # Should correctly parse PNG
-        assert img_part["source"]["data"] == "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
+        assert (
+            img_part["source"]["data"] == "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
+        )
 
     def test_convert_webp_image_to_anthropic_with_correct_mime_type(self):
         """Test that Anthropic conversion correctly parses WebP MIME type from data URL"""
         message = Message(
             role=MessageRole.user,
-            content=[ImageContent(image_url="data:image/webp;base64,UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA")]
+            content=[ImageContent(image_url="data:image/webp;base64,UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA")],
         )
 
         anthropic_msg = message.to_anthropic_dict()
-        
+
         img_part = anthropic_msg["content"][0]
         assert img_part["source"]["media_type"] == "image/webp"  # Should correctly parse WebP
 
@@ -340,7 +344,10 @@ class TestGoogleAIFormatConversion:
         """Test converting HTTP image URL to Google AI format falls back to placeholder on failure"""
         message = Message(
             role=MessageRole.user,
-            content=[TextContent(text="Check this image"), ImageContent(image_url="https://invalid-domain-that-should-not-exist.invalid/image.jpg")],
+            content=[
+                TextContent(text="Check this image"),
+                ImageContent(image_url="https://invalid-domain-that-should-not-exist.invalid/image.jpg"),
+            ],
         )
 
         # Should fall back to text placeholder when fetch fails
@@ -349,7 +356,7 @@ class TestGoogleAIFormatConversion:
         img_part = google_msg["parts"][1]
         assert "text" in img_part
         assert "Failed to load image" in img_part["text"]
-        
+
     def test_convert_unknown_scheme_to_google_ai(self):
         """Test converting unknown URL scheme to Google AI format creates placeholder"""
         message = Message(
@@ -420,11 +427,8 @@ class TestMessageBlockIntegration:
         """Test that converting multimodal Message to LettaMessage preserves image content."""
         # Create a multimodal message with text and image
         text_content = TextContent(text="Can you see this image?")
-        image_content = ImageContent(
-            image_url="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...",
-            detail="high"
-        )
-        
+        image_content = ImageContent(image_url="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...", detail="high")
+
         message = Message(
             id=uuid4(),
             role=MessageRole.user,
@@ -438,11 +442,11 @@ class TestMessageBlockIntegration:
         # Should have one UserMessage with preserved multimodal content
         assert len(letta_messages) == 1
         assert isinstance(letta_messages[0], UserMessage)
-        
+
         # Content should be the original multimodal content, not just text
         assert letta_messages[0].content == [text_content, image_content]
         assert len(letta_messages[0].content) == 2
-        
+
         # Check that both text and image are preserved
         assert isinstance(letta_messages[0].content[0], TextContent)
         assert isinstance(letta_messages[0].content[1], ImageContent)
@@ -452,10 +456,8 @@ class TestMessageBlockIntegration:
     def test_image_only_message_to_letta_messages(self):
         """Test that image-only messages are properly converted."""
         # Create an image-only message
-        image_content = ImageContent(
-            image_url="https://example.com/image.jpg", detail="low"
-        )
-        
+        image_content = ImageContent(image_url="https://example.com/image.jpg", detail="low")
+
         message = Message(
             id=uuid4(),
             role=MessageRole.user,
@@ -469,7 +471,7 @@ class TestMessageBlockIntegration:
         # Should have one UserMessage with preserved image content
         assert len(letta_messages) == 1
         assert isinstance(letta_messages[0], UserMessage)
-        
+
         # Content should be the original image content
         assert letta_messages[0].content == [image_content]
         assert len(letta_messages[0].content) == 1

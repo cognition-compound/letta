@@ -69,18 +69,20 @@ def google_ai_get_model_list(base_url: str, api_key: str, key_in_header: bool = 
     try:
         client = genai.Client(api_key=api_key)
         response = client.models.list()
-        
+
         # Convert to the expected format
         model_list = []
         for model in response.models:
-            model_list.append({
-                "name": model.name,
-                "displayName": getattr(model, "display_name", ""),
-                "description": getattr(model, "description", ""),
-                "inputTokenLimit": getattr(model, "input_token_limit", None),
-                "outputTokenLimit": getattr(model, "output_token_limit", None),
-                "supportedGenerationMethods": getattr(model, "supported_generation_methods", [])
-            })
+            model_list.append(
+                {
+                    "name": model.name,
+                    "displayName": getattr(model, "display_name", ""),
+                    "description": getattr(model, "description", ""),
+                    "inputTokenLimit": getattr(model, "input_token_limit", None),
+                    "outputTokenLimit": getattr(model, "output_token_limit", None),
+                    "supportedGenerationMethods": getattr(model, "supported_generation_methods", []),
+                }
+            )
         return model_list
 
     except genai.errors.ClientError as client_err:

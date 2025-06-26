@@ -82,7 +82,8 @@ def generate_openapi_schema(app: FastAPI):
             docs["servers"] = [{"url": host} for host in settings.cors_origins]
         # Write OpenAPI schema to a writable directory
         import os
-        openapi_dir = os.environ.get('LETTA_OPENAPI_DIR', '/tmp')
+
+        openapi_dir = os.environ.get("LETTA_OPENAPI_DIR", "/tmp")
         openapi_path = Path(openapi_dir) / f"openapi_{name}.json"
         openapi_path.write_text(json.dumps(docs, indent=2))
 
