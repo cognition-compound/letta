@@ -15,6 +15,7 @@ from letta.constants import (
     BASE_TOOLS,
     BASE_VOICE_SLEEPTIME_CHAT_TOOLS,
     BASE_VOICE_SLEEPTIME_TOOLS,
+    DEFAULT_TIMEZONE,
     FILES_TOOLS,
     MULTI_AGENT_TOOLS,
 )
@@ -287,7 +288,7 @@ class AgentManager:
                 tool_rules = list(agent_create.tool_rules or [])
                 if agent_create.include_base_tool_rules:
                     for tn in tool_names:
-                        if tn in {"send_message", "send_message_to_agent_async", "memory_finish_edits"}:
+                        if tn in {"send_message", "memory_finish_edits"}:
                             tool_rules.append(TerminalToolRule(tool_name=tn))
                         elif tn in (BASE_TOOLS + BASE_MEMORY_TOOLS + BASE_SLEEPTIME_TOOLS):
                             tool_rules.append(ContinueToolRule(tool_name=tn))
@@ -317,6 +318,7 @@ class AgentManager:
                     response_format=agent_create.response_format,
                     created_by_id=actor.id,
                     last_updated_by_id=actor.id,
+                    timezone=agent_create.timezone,
                 )
 
                 if _test_only_force_id:
@@ -450,7 +452,7 @@ class AgentManager:
                 tool_rules = list(agent_create.tool_rules or [])
                 if agent_create.include_base_tool_rules:
                     for tn in tool_names:
-                        if tn in {"send_message", "send_message_to_agent_async", "memory_finish_edits"}:
+                        if tn in {"send_message", "memory_finish_edits"}:
                             tool_rules.append(TerminalToolRule(tool_name=tn))
                         elif tn in (BASE_TOOLS + BASE_MEMORY_TOOLS + BASE_MEMORY_TOOLS_V2 + BASE_SLEEPTIME_TOOLS):
                             tool_rules.append(ContinueToolRule(tool_name=tn))
@@ -480,6 +482,7 @@ class AgentManager:
                     response_format=agent_create.response_format,
                     created_by_id=actor.id,
                     last_updated_by_id=actor.id,
+                    timezone=agent_create.timezone if agent_create.timezone else DEFAULT_TIMEZONE,
                 )
 
                 if _test_only_force_id:
@@ -539,6 +542,7 @@ class AgentManager:
                 new_agent.message_ids = [msg.id for msg in init_messages]
 
             await session.refresh(new_agent)
+
             result = await new_agent.to_pydantic_async()
 
         await self.message_manager.create_many_messages_async(pydantic_msgs=init_messages, actor=actor)
@@ -561,7 +565,9 @@ class AgentManager:
             # Don't use anything else in the pregen sequence, instead use the provided sequence
             init_messages = [system_message_obj]
             init_messages.extend(
-                package_initial_message_sequence(agent_state.id, supplied_initial_message_sequence, agent_state.llm_config.model, actor)
+                package_initial_message_sequence(
+                    agent_state.id, supplied_initial_message_sequence, agent_state.llm_config.model, agent_state.timezone, actor
+                )
             )
         else:
             init_messages = [
@@ -1424,6 +1430,7 @@ class AgentManager:
             system_prompt=agent_state.system,
             in_context_memory=agent_state.memory,
             in_context_memory_last_edit=memory_edit_timestamp,
+            timezone=agent_state.timezone,
             previous_message_count=num_messages - len(agent_state.message_ids),
             archival_memory_size=num_archival_memories,
         )
@@ -1498,6 +1505,7 @@ class AgentManager:
             system_prompt=agent_state.system,
             in_context_memory=agent_state.memory,
             in_context_memory_last_edit=memory_edit_timestamp,
+            timezone=agent_state.timezone,
             previous_message_count=num_messages - len(agent_state.message_ids),
             archival_memory_size=num_archival_memories,
             tool_rules_solver=tool_rules_solver,
@@ -1697,6 +1705,13 @@ class AgentManager:
             file_blocks = await self.file_agent_manager.get_all_file_blocks_by_name(file_names=file_block_names, actor=actor)
             agent_state.memory.file_blocks = [b for b in file_blocks if b is not None]
 
+        return agent_state
+
+    @trace_method
+    @enforce_types
+    async def refresh_file_blocks(self, agent_state: PydanticAgentState, actor: PydanticUser) -> PydanticAgentState:
+        file_blocks = await self.file_agent_manager.list_files_for_agent(agent_id=agent_state.id, actor=actor, return_as_blocks=True)
+        agent_state.memory.file_blocks = [b for b in file_blocks if b is not None]
         return agent_state
 
     # ======================================================================================================================
@@ -1954,25 +1969,61 @@ class AgentManager:
     @trace_method
     @enforce_types
     def attach_block(self, agent_id: str, block_id: str, actor: PydanticUser) -> PydanticAgentState:
-        """Attaches a block to an agent."""
+        """Attaches a block to an agent. For sleeptime agents, also attaches to paired agents in the same group."""
         with db_registry.session() as session:
             agent = AgentModel.read(db_session=session, identifier=agent_id, actor=actor)
             block = BlockModel.read(db_session=session, identifier=block_id, actor=actor)
 
+            # Attach block to the main agent
             agent.core_memory.append(block)
-            agent.update(session, actor=actor)
+            agent.update(session, actor=actor, no_commit=True)
+
+            # If agent is part of a sleeptime group, attach block to the sleeptime_agent
+            if agent.multi_agent_group and agent.multi_agent_group.manager_type == ManagerType.sleeptime:
+                group = agent.multi_agent_group
+                # Find the sleeptime_agent in the group
+                for other_agent_id in group.agent_ids or []:
+                    if other_agent_id != agent_id:
+                        try:
+                            other_agent = AgentModel.read(db_session=session, identifier=other_agent_id, actor=actor)
+                            if other_agent.agent_type == AgentType.sleeptime_agent and block not in other_agent.core_memory:
+                                other_agent.core_memory.append(block)
+                                other_agent.update(session, actor=actor, no_commit=True)
+                        except NoResultFound:
+                            # Agent might not exist anymore, skip
+                            continue
+            session.commit()
+
             return agent.to_pydantic()
 
     @trace_method
     @enforce_types
     async def attach_block_async(self, agent_id: str, block_id: str, actor: PydanticUser) -> PydanticAgentState:
-        """Attaches a block to an agent."""
+        """Attaches a block to an agent. For sleeptime agents, also attaches to paired agents in the same group."""
         async with db_registry.async_session() as session:
             agent = await AgentModel.read_async(db_session=session, identifier=agent_id, actor=actor)
             block = await BlockModel.read_async(db_session=session, identifier=block_id, actor=actor)
 
+            # Attach block to the main agent
             agent.core_memory.append(block)
-            await agent.update_async(session, actor=actor)
+            await agent.update_async(session)
+
+            # If agent is part of a sleeptime group, attach block to the sleeptime_agent
+            if agent.multi_agent_group and agent.multi_agent_group.manager_type == ManagerType.sleeptime:
+                group = agent.multi_agent_group
+                # Find the sleeptime_agent in the group
+                for other_agent_id in group.agent_ids or []:
+                    if other_agent_id != agent_id:
+                        try:
+                            other_agent = await AgentModel.read_async(db_session=session, identifier=other_agent_id, actor=actor)
+                            if other_agent.agent_type == AgentType.sleeptime_agent and block not in other_agent.core_memory:
+                                other_agent.core_memory.append(block)
+                                await other_agent.update_async(session, actor=actor, no_commit=True)
+                        except NoResultFound:
+                            # Agent might not exist anymore, skip
+                            continue
+            session.commit()
+
             return await agent.to_pydantic_async()
 
     @trace_method
