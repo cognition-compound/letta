@@ -115,9 +115,12 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
         sqlalchemy[asyncio] alembic && \
     rm -f /tmp/*.whl
 
-# Copy application source
-COPY --from=builder /build/. ./
-RUN rm -rf .venv dist/ build/
+# Copy application source selectively (avoid copying builder artifacts)
+COPY --from=builder /build/letta ./letta
+COPY --from=builder /build/alembic ./alembic
+COPY --from=builder /build/alembic.ini ./alembic.ini
+COPY --from=builder /build/tests ./tests
+COPY --from=builder /build/pyproject.toml ./pyproject.toml
 
 # Copy and setup startup script
 COPY letta/server/startup.sh /usr/local/bin/startup.sh
