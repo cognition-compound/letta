@@ -105,7 +105,7 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     /app/.venv/bin/pip install --prefer-binary /tmp/*.whl && \
     # Install all optional dependencies since they're not included in the wheel
     /app/.venv/bin/pip install \
-        pgvector pg8000 psycopg2-binary psycopg2 asyncpg \
+        pgvector pg8000 psycopg2-binary asyncpg \
         pytest pytest-asyncio pexpect black pre-commit pyright pytest-order autoflake isort \
         websockets fastapi uvicorn[standard] python-multipart \
         docker langchain wikipedia langchain-community locust \
