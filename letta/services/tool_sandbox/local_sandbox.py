@@ -8,7 +8,10 @@ from typing import Any, Dict, Optional
 
 from pydantic.config import JsonDict
 
+from letta.log import get_logger
 from letta.otel.tracing import log_event, trace_method
+
+logger = get_logger(__name__)
 from letta.schemas.agent import AgentState
 from letta.schemas.sandbox_config import SandboxConfig, SandboxType
 from letta.schemas.tool import Tool
@@ -277,4 +280,5 @@ class AsyncToolSandboxLocal(AsyncToolSandboxBase):
         if actual_checksum == checksum:
             remainder = data[:pos] + data[message_start + message_len :]
             return message_data, (remainder.decode("utf-8") if remainder else "")
+        logger.critical("Tool execution failed - output corrupted, sandbox integrity compromised")
         raise Exception("Function ran, but output is corrupted.")

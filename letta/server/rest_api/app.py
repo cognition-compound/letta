@@ -12,6 +12,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 
+from letta.server.rest_api.middleware import RequestLoggingMiddleware, UserContextMiddleware
+
 from letta.__init__ import __version__
 from letta.agents.exceptions import IncompatibleAgentType
 from letta.constants import ADMIN_PREFIX, API_PREFIX, OPENAI_API_PREFIX
@@ -53,7 +55,8 @@ from fastapi import FastAPI
 
 is_windows = platform.system() == "Windows"
 
-log = logging.getLogger("uvicorn")
+from letta.log import get_logger
+log = get_logger("uvicorn")
 
 
 def generate_openapi_schema(app: FastAPI):
@@ -118,11 +121,29 @@ class CheckPasswordMiddleware(BaseHTTPMiddleware):
         )
 
 
+def _get_client_ip_for_error(request: Request) -> str:
+    """Extract client IP from request for error logging."""
+    # Check for forwarded headers first (for load balancers/proxies)
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+        
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip
+        
+    # Fallback to direct client
+    if request.client:
+        return request.client.host
+        
+    return "unknown"
+
+
 def create_application() -> "FastAPI":
     """the application start routine"""
     # global server
     # server = SyncServer(default_interface_factory=lambda: interface())
-    print(f"\n[[ Letta server // v{__version__} ]]")
+    log.info(f"Starting Letta server v{__version__}")
 
     if (os.getenv("SENTRY_DSN") is not None) and (os.getenv("SENTRY_DSN") != ""):
         import sentry_sdk
@@ -147,37 +168,95 @@ def create_application() -> "FastAPI":
 
     @app.exception_handler(IncompatibleAgentType)
     async def handle_incompatible_agent_type(request: Request, exc: IncompatibleAgentType):
+        # Extract request context for error logging
+        request_id = getattr(request.state, "request_id", "unknown")
+        user_id = getattr(request.state, "user_id", None)
+        client_ip = _get_client_ip_for_error(request)
+        
+        # Log the agent type error with context
+        log.warning(
+            f"Incompatible agent type error: {str(exc)} (req_id: {request_id})",
+            extra={
+                "error_type": "IncompatibleAgentType",
+                "expected_type": exc.expected_type,
+                "actual_type": exc.actual_type,
+                "request_id": request_id,
+                "user_id": str(user_id) if user_id else None,
+                "client_ip": client_ip,
+                "method": request.method,
+                "path": request.url.path,
+            }
+        )
+        
         return JSONResponse(
             status_code=400,
             content={
                 "detail": str(exc),
                 "expected_type": exc.expected_type,
                 "actual_type": exc.actual_type,
+                "request_id": request_id,  # Include request ID in response for traceability
             },
         )
 
     @app.exception_handler(Exception)
     async def generic_error_handler(request: Request, exc: Exception):
-        # Log the actual error for debugging
-        log.error(f"Unhandled error: {str(exc)}", exc_info=True)
-        print(f"Unhandled error: {str(exc)}")
-
         import traceback
-
-        # Print the stack trace
-        print(f"Stack trace: {traceback.format_exc()}")
+        
+        # Extract request context for error logging
+        request_id = getattr(request.state, "request_id", "unknown")
+        user_id = getattr(request.state, "user_id", None)
+        organization_id = getattr(request.state, "organization_id", None)
+        client_ip = _get_client_ip_for_error(request)
+        user_agent = request.headers.get("user-agent", "")
+        method = request.method
+        url = str(request.url)
+        
+        # Create structured error context
+        error_context = {
+            "error_type": type(exc).__name__,
+            "error_message": str(exc),
+            "request_id": request_id,
+            "method": method,
+            "url": url,
+            "path": request.url.path,
+            "query_params": dict(request.query_params),
+            "client_ip": client_ip,
+            "user_agent": user_agent,
+            "user_id": str(user_id) if user_id else None,
+            "organization_id": str(organization_id) if organization_id else None,
+            "stack_trace": traceback.format_exc(),
+        }
+        
+        # Log with full context
+        log.error(
+            f"Unhandled error: {str(exc)} (req_id: {request_id})",
+            extra=error_context,
+            exc_info=True
+        )
 
         if (os.getenv("SENTRY_DSN") is not None) and (os.getenv("SENTRY_DSN") != ""):
             import sentry_sdk
-
+            
+            # Add context to Sentry
+            with sentry_sdk.configure_scope() as scope:
+                scope.set_tag("request_id", request_id)
+                scope.set_user({"id": user_id, "organization_id": organization_id})
+                scope.set_context("request", {
+                    "method": method,
+                    "url": url,
+                    "client_ip": client_ip,
+                    "user_agent": user_agent,
+                })
+            
             sentry_sdk.capture_exception(exc)
 
         return JSONResponse(
             status_code=500,
             content={
                 "detail": "An internal server error occurred",
+                "request_id": request_id,  # Include request ID for traceability
                 # Only include error details in debug/development mode
-                # "debug_info": str(exc) if settings.debug else None
+                "debug_info": str(exc) if settings.debug else None,
             },
         )
 
@@ -244,7 +323,7 @@ def create_application() -> "FastAPI":
     settings.cors_origins.append("https://app.letta.com")
 
     if (os.getenv("LETTA_SERVER_SECURE") == "true") or "--secure" in sys.argv:
-        print(f"▶ Using secure mode with password: {random_password}")
+        log.info(f"Using secure mode with password: {random_password}")
         app.add_middleware(CheckPasswordMiddleware)
 
     app.add_middleware(
@@ -253,6 +332,19 @@ def create_application() -> "FastAPI":
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+    )
+    
+    # Add user context middleware (must be before logging middleware)
+    app.add_middleware(UserContextMiddleware)
+    
+    # Add request logging middleware for comprehensive HTTP tracking
+    app.add_middleware(
+        RequestLoggingMiddleware,
+        log_level="DEBUG" if settings.debug else "INFO",
+        log_request_body=settings.debug,  # Only log request bodies in debug mode
+        log_response_body=False,  # Response body logging disabled for performance
+        max_body_size=2048,  # Limit body logging to 2KB
+        skip_paths={"/v1/health", "/health", "/metrics", "/favicon.ico", "/docs", "/redoc", "/openapi.json"},
     )
 
     # Set up OpenTelemetry based on standard environment variables
@@ -273,7 +365,7 @@ def create_application() -> "FastAPI":
         setup_metrics(app=app)
         setup_logging()
 
-        print(f"▶ OpenTelemetry configured for service: {os.environ.get('OTEL_SERVICE_NAME')}")
+        log.info(f"OpenTelemetry configured for service: {os.environ.get('OTEL_SERVICE_NAME')}")
 
     for route in v1_routes:
         app.include_router(route, prefix=API_PREFIX)
@@ -330,7 +422,7 @@ def start_server(
     # Experimental UV Loop Support
     try:
         if importlib.util.find_spec("uvloop") is not None and settings.use_uvloop:
-            print("Running server on uvloop...")
+            log.info("Running server on uvloop")
             import asyncio
 
             import uvloop
@@ -340,8 +432,8 @@ def start_server(
         pass
 
     if (os.getenv("LOCAL_HTTPS") == "true") or "--localhttps" in sys.argv:
-        print(f"▶ Server running at: https://{host or 'localhost'}:{port or REST_DEFAULT_PORT}")
-        print(f"▶ View using ADE at: https://app.letta.com/development-servers/local/dashboard\n")
+        log.info(f"Server running at: https://{host or 'localhost'}:{port or REST_DEFAULT_PORT}")
+        log.info(f"View using ADE at: https://app.letta.com/development-servers/local/dashboard")
         if importlib.util.find_spec("granian") is not None and settings.use_granian:
             from granian import Granian
 
@@ -377,11 +469,11 @@ def start_server(
     else:
         if is_windows:
             # Windows doesn't those the fancy unicode characters
-            print(f"Server running at: http://{host or 'localhost'}:{port or REST_DEFAULT_PORT}")
-            print(f"View using ADE at: https://app.letta.com/development-servers/local/dashboard\n")
+            log.info(f"Server running at: http://{host or 'localhost'}:{port or REST_DEFAULT_PORT}")
+            log.info(f"View using ADE at: https://app.letta.com/development-servers/local/dashboard")
         else:
-            print(f"▶ Server running at: http://{host or 'localhost'}:{port or REST_DEFAULT_PORT}")
-            print(f"▶ View using ADE at: https://app.letta.com/development-servers/local/dashboard\n")
+            log.info(f"Server running at: http://{host or 'localhost'}:{port or REST_DEFAULT_PORT}")
+            log.info(f"View using ADE at: https://app.letta.com/development-servers/local/dashboard")
 
         if importlib.util.find_spec("granian") is not None and settings.use_granian:
             # Experimental Granian engine

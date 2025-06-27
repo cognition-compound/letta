@@ -6,8 +6,11 @@ import tiktoken
 from openai import OpenAI
 
 from letta.constants import EMBEDDING_TO_TOKENIZER_DEFAULT, EMBEDDING_TO_TOKENIZER_MAP, MAX_EMBEDDING_DIM
+from letta.log import get_logger
 from letta.schemas.embedding_config import EmbeddingConfig
 from letta.utils import is_valid_url, printd
+
+logger = get_logger(__name__)
 
 
 def parse_and_chunk_text(text: str, chunk_size: int) -> List[str]:
@@ -32,7 +35,7 @@ def check_and_split_text(text: str, embedding_model: str) -> List[str]:
     if embedding_model in EMBEDDING_TO_TOKENIZER_MAP:
         encoding = tiktoken.get_encoding(EMBEDDING_TO_TOKENIZER_MAP[embedding_model])
     else:
-        print(f"Warning: couldn't find tokenizer for model {embedding_model}, using default tokenizer {EMBEDDING_TO_TOKENIZER_DEFAULT}")
+        logger.warning(f"Couldn't find tokenizer for model {embedding_model}, using default tokenizer {EMBEDDING_TO_TOKENIZER_DEFAULT}")
         encoding = tiktoken.get_encoding(EMBEDDING_TO_TOKENIZER_DEFAULT)
 
     num_tokens = len(encoding.encode(text))
@@ -48,7 +51,7 @@ def check_and_split_text(text: str, embedding_model: str) -> List[str]:
 
     # truncate text if too long
     if num_tokens > max_length:
-        print(f"Warning: text is too long ({num_tokens} tokens), truncating to {max_length} tokens.")
+        logger.warning(f"Text is too long ({num_tokens} tokens), truncating to {max_length} tokens")
         # First, apply any necessary formatting
         formatted_text = format_text(text, embedding_model)
         # Then truncate

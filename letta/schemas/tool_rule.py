@@ -8,7 +8,9 @@ from pydantic import Field
 from letta.schemas.enums import ToolRuleType
 from letta.schemas.letta_base import LettaBase
 
-logger = logging.getLogger(__name__)
+from letta.log import get_logger
+
+logger = get_logger(__name__)
 
 
 class BaseToolRule(LettaBase):

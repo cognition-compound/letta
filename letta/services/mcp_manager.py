@@ -72,7 +72,7 @@ class MCPManager:
             # read from config file
             mcp_config = self.read_mcp_config()
             if mcp_server_name not in mcp_config:
-                print("MCP server not found in config.", mcp_config)
+                logger.error(f"MCP server {mcp_server_name} not found in config: {mcp_config}")
                 raise ValueError(f"MCP server {mcp_server_name} not found in config.")
             server_config = mcp_config[mcp_server_name]
 

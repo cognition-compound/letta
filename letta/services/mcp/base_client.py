@@ -29,7 +29,7 @@ class AsyncBaseMCPClient:
             await self.session.initialize()
             self.initialized = True
         except ConnectionError as e:
-            logger.error(f"MCP connection failed: {str(e)}")
+            logger.critical(f"MCP connection failed - service unavailable: {str(e)}")
             raise e
         except Exception as e:
             logger.error(

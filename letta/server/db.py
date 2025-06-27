@@ -43,7 +43,7 @@ def db_error_handler():
         yield
     except Exception as e:
         # Handle other SQLAlchemy errors
-        print(e)
+        logger.critical(f"Critical database error, shutting down: {e}", exc_info=True)
         print_sqlite_schema_error()
         # raise ValueError(f"SQLite DB error: {str(e)}")
         exit(1)

@@ -204,6 +204,7 @@ def import_agent_serialized(
         raise HTTPException(status_code=409, detail=f"Database integrity error: {str(e)}")
 
     except OperationalError as e:
+        logger.critical(f"Database connection error during agent upload: {str(e)}", exc_info=True)
         raise HTTPException(status_code=503, detail=f"Database connection error. Please try again later: {str(e)}")
 
     except Exception as e:
