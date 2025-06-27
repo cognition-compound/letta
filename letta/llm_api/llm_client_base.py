@@ -1,5 +1,7 @@
 import json
+import time
 from abc import abstractmethod
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from anthropic.types.beta.messages import BetaMessageBatch
@@ -7,6 +9,7 @@ from openai import AsyncStream, Stream
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 
 from letta.errors import LLMError
+from letta.log import get_logger
 from letta.otel.tracing import log_event, trace_method
 from letta.schemas.embedding_config import EmbeddingConfig
 from letta.schemas.llm_config import LLMConfig
@@ -34,6 +37,7 @@ class LLMClientBase:
         self.actor = actor
         self.put_inner_thoughts_first = put_inner_thoughts_first
         self.use_tool_naming = use_tool_naming
+        self.logger = get_logger(__name__)
 
     @trace_method
     def send_llm_request(
@@ -50,11 +54,45 @@ class LLMClientBase:
         If stream=True, returns a Stream[ChatCompletionChunk] that can be iterated over.
         Otherwise returns a ChatCompletionResponse.
         """
+        start_time = time.time()
+        provider_name = getattr(llm_config, 'provider', 'unknown')
+        model_name = getattr(llm_config, 'model', 'unknown')
+        
+        # Calculate request metrics
+        num_messages = len(messages)
+        num_tools = len(tools) if tools else 0
+        total_chars = sum(len(str(msg.text)) for msg in messages if hasattr(msg, 'text') and msg.text)
+        
         request_data = self.build_request_data(messages, llm_config, tools, force_tool_call)
 
         try:
             log_event(name="llm_request_sent", attributes=request_data)
+            
+            # Log detailed request metrics
+            self.logger.info(
+                f"LLM API request initiated",
+                extra={
+                    "event_type": "llm_request_start",
+                    "provider": provider_name,
+                    "model": model_name,
+                    "user_id": str(self.actor.id) if self.actor else None,
+                    "organization_id": str(self.actor.organization_id) if self.actor and self.actor.organization_id else None,
+                    "step_id": step_id,
+                    "num_messages": num_messages,
+                    "num_tools": num_tools,
+                    "total_input_chars": total_chars,
+                    "has_force_tool_call": force_tool_call is not None,
+                    "is_streaming": getattr(llm_config, 'stream', False),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+            
             response_data = self.request(request_data, llm_config)
+            response_time_ms = round((time.time() - start_time) * 1000, 2)
+            
+            # Extract usage metrics from response
+            usage_metrics = self._extract_usage_metrics(response_data)
+            
             if step_id and telemetry_manager:
                 telemetry_manager.create_provider_trace(
                     actor=self.actor,
@@ -65,11 +103,85 @@ class LLMClientBase:
                         organization_id=self.actor.organization_id,
                     ),
                 )
+            
             log_event(name="llm_response_received", attributes=response_data)
+            
+            # Log detailed response metrics
+            self.logger.info(
+                f"LLM API request completed successfully",
+                extra={
+                    "event_type": "llm_request_success",
+                    "provider": provider_name,
+                    "model": model_name,
+                    "user_id": str(self.actor.id) if self.actor else None,
+                    "organization_id": str(self.actor.organization_id) if self.actor and self.actor.organization_id else None,
+                    "step_id": step_id,
+                    "response_time_ms": response_time_ms,
+                    "prompt_tokens": usage_metrics.get("prompt_tokens"),
+                    "completion_tokens": usage_metrics.get("completion_tokens"),
+                    "total_tokens": usage_metrics.get("total_tokens"),
+                    "estimated_cost_usd": usage_metrics.get("estimated_cost"),
+                    "finish_reason": usage_metrics.get("finish_reason"),
+                    "has_tool_calls": usage_metrics.get("has_tool_calls", False),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+            
         except Exception as e:
+            error_time_ms = round((time.time() - start_time) * 1000, 2)
+            
+            # Log LLM API errors with context
+            self.logger.error(
+                f"LLM API request failed: {str(e)}",
+                extra={
+                    "event_type": "llm_request_error",
+                    "provider": provider_name,
+                    "model": model_name,
+                    "user_id": str(self.actor.id) if self.actor else None,
+                    "organization_id": str(self.actor.organization_id) if self.actor and self.actor.organization_id else None,
+                    "step_id": step_id,
+                    "error_time_ms": error_time_ms,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "num_messages": num_messages,
+                    "num_tools": num_tools,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+                exc_info=True
+            )
+            
             raise self.handle_llm_error(e)
 
         return self.convert_response_to_chat_completion(response_data, messages, llm_config)
+
+    def _extract_usage_metrics(self, response_data: dict) -> dict:
+        """Extract usage metrics from LLM response for logging."""
+        metrics = {}
+        
+        # Try to extract token usage (OpenAI format is most common)
+        if isinstance(response_data, dict):
+            usage = response_data.get('usage', {})
+            if usage:
+                metrics['prompt_tokens'] = usage.get('prompt_tokens')
+                metrics['completion_tokens'] = usage.get('completion_tokens')
+                metrics['total_tokens'] = usage.get('total_tokens')
+                
+                # Estimate cost based on token usage (rough approximation)
+                if metrics.get('total_tokens'):
+                    # Very rough cost estimation (actual costs vary by provider/model)
+                    estimated_cost = metrics['total_tokens'] * 0.00002  # ~$0.02 per 1K tokens
+                    metrics['estimated_cost'] = round(estimated_cost, 6)
+            
+            # Extract finish reason
+            if 'choices' in response_data and response_data['choices']:
+                first_choice = response_data['choices'][0]
+                metrics['finish_reason'] = first_choice.get('finish_reason')
+                
+                # Check for tool calls
+                message = first_choice.get('message', {})
+                metrics['has_tool_calls'] = bool(message.get('tool_calls'))
+        
+        return metrics
 
     @trace_method
     async def send_llm_request_async(

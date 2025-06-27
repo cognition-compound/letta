@@ -1,5 +1,6 @@
 import asyncio
 import os
+import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -22,7 +23,7 @@ from letta.constants import (
 from letta.helpers import ToolRulesSolver
 from letta.helpers.datetime_helpers import get_utc_time
 from letta.llm_api.llm_client import LLMClient
-from letta.log import get_logger
+from letta.log import get_audit_logger, get_logger
 from letta.orm import Agent as AgentModel
 from letta.orm import AgentPassage, AgentsTags
 from letta.orm import Block as BlockModel
@@ -91,6 +92,7 @@ from letta.services.tool_manager import ToolManager
 from letta.utils import enforce_types, united_diff
 
 logger = get_logger(__name__)
+audit_logger = get_audit_logger()
 
 
 class AgentManager:
@@ -235,6 +237,8 @@ class AgentManager:
     # ======================================================================================================================
     @trace_method
     def create_agent(self, agent_create: CreateAgent, actor: PydanticUser, _test_only_force_id: Optional[str] = None) -> PydanticAgentState:
+        start_time = time.time()
+        
         # validate required configs
         if not agent_create.llm_config or not agent_create.embedding_config:
             raise ValueError("llm_config and embedding_config are required")
@@ -381,7 +385,44 @@ class AgentManager:
         # Using the synchronous version since we don't have an async version yet
         # If you implement an async version of create_many_messages, you can switch to that
         self.message_manager.create_many_messages(pydantic_msgs=init_messages, actor=actor)
-        return new_agent.to_pydantic()
+        
+        agent_state = new_agent.to_pydantic()
+        creation_time_ms = round((time.time() - start_time) * 1000, 2)
+        
+        # Log agent creation for lifecycle tracking
+        logger.info(
+            f"Agent created successfully: {agent_state.name}",
+            extra={
+                "event_type": "agent_created",
+                "agent_id": agent_state.id,
+                "agent_name": agent_state.name,
+                "agent_type": str(agent_create.agent_type),
+                "user_id": str(actor.id),
+                "organization_id": str(actor.organization_id) if actor.organization_id else None,
+                "creation_time_ms": creation_time_ms,
+                "llm_model": agent_create.llm_config.model if agent_create.llm_config else None,
+                "embedding_model": agent_create.embedding_config.embedding_model if agent_create.embedding_config else None,
+                "num_tools": len(tool_names),
+                "num_blocks": len(block_ids),
+                "include_base_tools": agent_create.include_base_tools,
+            }
+        )
+        
+        # Audit log for security tracking
+        audit_logger.info(
+            f"Agent lifecycle event: creation",
+            extra={
+                "event_type": "agent_lifecycle",
+                "action": "create",
+                "agent_id": agent_state.id,
+                "agent_name": agent_state.name,
+                "user_id": str(actor.id),
+                "organization_id": str(actor.organization_id) if actor.organization_id else None,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        
+        return agent_state
 
     @trace_method
     async def create_agent_async(
@@ -601,6 +642,7 @@ class AgentManager:
         agent_update: UpdateAgent,
         actor: PydanticUser,
     ) -> PydanticAgentState:
+        start_time = time.time()
 
         new_tools = set(agent_update.tool_ids or [])
         new_sources = set(agent_update.source_ids or [])
@@ -713,7 +755,55 @@ class AgentManager:
             session.flush()
             session.refresh(agent)
 
-            return agent.to_pydantic()
+            agent_state = agent.to_pydantic()
+            update_time_ms = round((time.time() - start_time) * 1000, 2)
+            
+            # Collect update information for logging
+            updates_made = []
+            if agent_update.name: updates_made.append("name")
+            if agent_update.description: updates_made.append("description")
+            if agent_update.system: updates_made.append("system")
+            if agent_update.llm_config: updates_made.append("llm_config")
+            if agent_update.embedding_config: updates_made.append("embedding_config")
+            if agent_update.tool_ids is not None: updates_made.append("tools")
+            if agent_update.source_ids is not None: updates_made.append("sources")
+            if agent_update.block_ids is not None: updates_made.append("blocks")
+            if agent_update.identity_ids is not None: updates_made.append("identities")
+            if agent_update.tags is not None: updates_made.append("tags")
+            
+            # Log agent update for lifecycle tracking
+            logger.info(
+                f"Agent updated successfully: {agent_state.name}",
+                extra={
+                    "event_type": "agent_updated",
+                    "agent_id": agent_state.id,
+                    "agent_name": agent_state.name,
+                    "user_id": str(actor.id),
+                    "organization_id": str(actor.organization_id) if actor.organization_id else None,
+                    "update_time_ms": update_time_ms,
+                    "updates_made": updates_made,
+                    "num_tools": len(new_tools) if agent_update.tool_ids is not None else None,
+                    "num_sources": len(new_sources) if agent_update.source_ids is not None else None,
+                    "num_blocks": len(new_blocks) if agent_update.block_ids is not None else None,
+                }
+            )
+            
+            # Audit log for security tracking
+            audit_logger.info(
+                f"Agent lifecycle event: update",
+                extra={
+                    "event_type": "agent_lifecycle",
+                    "action": "update",
+                    "agent_id": agent_state.id,
+                    "agent_name": agent_state.name,
+                    "user_id": str(actor.id),
+                    "organization_id": str(actor.organization_id) if actor.organization_id else None,
+                    "updates_made": updates_made,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+
+            return agent_state
 
     @trace_method
     @enforce_types
@@ -1126,10 +1216,16 @@ class AgentManager:
         Raises:
             NoResultFound: If agent doesn't exist
         """
+        start_time = time.time()
+        
         with db_registry.session() as session:
             # Retrieve the agent
             logger.debug(f"Hard deleting Agent with ID: {agent_id} with actor={actor}")
             agent = AgentModel.read(db_session=session, identifier=agent_id, actor=actor)
+            
+            # Store agent info for logging before deletion
+            agent_name = agent.name
+            agent_type = str(agent.agent_type) if agent.agent_type else None
             agents_to_delete = [agent]
             sleeptime_group_to_delete = None
 
@@ -1158,6 +1254,38 @@ class AgentManager:
                 logger.exception(f"Failed to hard delete Agent with ID {agent_id}")
                 raise ValueError(f"Failed to hard delete Agent with ID {agent_id}: {e}")
             else:
+                deletion_time_ms = round((time.time() - start_time) * 1000, 2)
+                
+                # Log agent deletion for lifecycle tracking
+                logger.info(
+                    f"Agent deleted successfully: {agent_name}",
+                    extra={
+                        "event_type": "agent_deleted",
+                        "agent_id": agent_id,
+                        "agent_name": agent_name,
+                        "agent_type": agent_type,
+                        "user_id": str(actor.id),
+                        "organization_id": str(actor.organization_id) if actor.organization_id else None,
+                        "deletion_time_ms": deletion_time_ms,
+                        "agents_deleted_count": len(agents_to_delete),
+                        "group_deleted": sleeptime_group_to_delete is not None,
+                    }
+                )
+                
+                # Audit log for security tracking
+                audit_logger.info(
+                    f"Agent lifecycle event: deletion",
+                    extra={
+                        "event_type": "agent_lifecycle",
+                        "action": "delete",
+                        "agent_id": agent_id,
+                        "agent_name": agent_name,
+                        "user_id": str(actor.id),
+                        "organization_id": str(actor.organization_id) if actor.organization_id else None,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+                
                 logger.debug(f"Agent with ID {agent_id} successfully hard deleted")
 
     @trace_method
