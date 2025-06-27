@@ -160,11 +160,16 @@ class MCPManager:
 
         async with db_registry.async_session() as session:
             # Query tools by MCP server tag and tool type
+            # Use PostgreSQL's native JSON containment operator (@>)
+            from sqlalchemy import text
+            tag_to_find = f"{MCP_TOOL_TAG_NAME_PREFIX}:{mcp_server_name}"
+            
             result = await session.scalars(
                 select(ToolModel)
                 .where(ToolModel.tool_type == ToolType.EXTERNAL_MCP)
-                .where(ToolModel.tags.contains([f"{MCP_TOOL_TAG_NAME_PREFIX}:{mcp_server_name}"]))
-                .where(ToolModel.organization_id == actor.organization_id)
+                .where(text("tags::jsonb @> :tag_json"))
+                .where(ToolModel.organization_id == actor.organization_id),
+                {"tag_json": f'["{tag_to_find}"]'}
             )
             tools = result.all()
             return [tool.to_pydantic() for tool in tools]
