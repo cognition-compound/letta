@@ -38,7 +38,7 @@ class OTLPLogHandler(LoggingHandler):
         super().emit(record)
 
 
-def setup_logging(service_name: Optional[str] = None) -> None:
+def setup_logging() -> None:
     """Set up OpenTelemetry logging export using standard OTEL configuration.
 
     This function respects standard OTEL environment variables:
@@ -47,9 +47,6 @@ def setup_logging(service_name: Optional[str] = None) -> None:
     - OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: Specific endpoint for logs
     - OTEL_SERVICE_NAME: The service name
     - OTEL_RESOURCE_ATTRIBUTES: Additional resource attributes
-
-    Args:
-        service_name: Optional service name override (defaults to OTEL_SERVICE_NAME or "letta-server")
     """
     if is_pytest_environment():
         return
@@ -65,12 +62,9 @@ def setup_logging(service_name: Optional[str] = None) -> None:
         logger.debug("No OTLP endpoint configured, skipping OpenTelemetry logging setup")
         return
 
-    # Get service name from env or parameter
-    if not service_name:
-        service_name = os.environ.get(OTEL_SERVICE_NAME, "letta-server")
-
-    # Create resource - merge with any existing OTEL resource attributes
-    resource = Resource.create({SERVICE_NAME: service_name})
+    # Use standard OTEL resource configuration
+    from letta.otel.resource import get_resource
+    resource = get_resource()
 
     # Create logger provider with resource
     logger_provider = LoggerProvider(resource=resource)

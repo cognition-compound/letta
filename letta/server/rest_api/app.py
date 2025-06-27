@@ -257,12 +257,11 @@ def create_application() -> "FastAPI":
 
     # Set up OpenTelemetry based on standard environment variables
     if not settings.disable_tracing:
-        # Determine service name - prefer ENV_NAME suffix for multi-tenant deployments
-        env_name_suffix = os.getenv("ENV_NAME")
-        service_name = f"letta-server-{env_name_suffix.lower()}" if env_name_suffix else "letta-server"
-
-        # Override OTEL_SERVICE_NAME if not already set
+        # Only set OTEL_SERVICE_NAME if not already provided - respect explicit configuration
         if not os.environ.get("OTEL_SERVICE_NAME"):
+            # Fallback: use ENV_NAME suffix for multi-tenant deployments
+            env_name_suffix = os.getenv("ENV_NAME")
+            service_name = f"letta-server-{env_name_suffix.lower()}" if env_name_suffix else "letta-server"
             os.environ["OTEL_SERVICE_NAME"] = service_name
 
         from letta.otel.logging import setup_logging
@@ -270,11 +269,11 @@ def create_application() -> "FastAPI":
         from letta.otel.tracing import setup_tracing
 
         # Set up OpenTelemetry using standard configuration
-        setup_tracing(app=app, service_name=service_name)
-        setup_metrics(app=app, service_name=service_name)
-        setup_logging(service_name=service_name)
+        setup_tracing(app=app)
+        setup_metrics(app=app)
+        setup_logging()
 
-        print(f"▶ OpenTelemetry configured for service: {service_name}")
+        print(f"▶ OpenTelemetry configured for service: {os.environ.get('OTEL_SERVICE_NAME')}")
 
     for route in v1_routes:
         app.include_router(route, prefix=API_PREFIX)

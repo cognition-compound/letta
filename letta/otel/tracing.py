@@ -125,7 +125,6 @@ async def _trace_error_handler(_request: Request, exc: Exception) -> JSONRespons
 
 def setup_tracing(
     app: Optional[FastAPI] = None,
-    service_name: Optional[str] = None,
 ) -> None:
     """Set up OpenTelemetry tracing using standard OTEL configuration.
 
@@ -138,7 +137,6 @@ def setup_tracing(
 
     Args:
         app: Optional FastAPI app to instrument
-        service_name: Optional service name override (defaults to OTEL_SERVICE_NAME or "letta-server")
     """
     if is_pytest_environment():
         return
@@ -154,12 +152,9 @@ def setup_tracing(
         logger.debug("No OTLP endpoint configured, skipping OpenTelemetry tracing setup")
         return
 
-    # Get service name from env or parameter
-    if not service_name:
-        service_name = os.environ.get(OTEL_SERVICE_NAME, "letta-server")
-
-    # Create resource - merge with any existing OTEL resource attributes
-    resource = Resource.create({SERVICE_NAME: service_name})
+    # Use standard OTEL resource configuration
+    from letta.otel.resource import get_resource
+    resource = get_resource()
 
     # Create tracer provider
     tracer_provider = TracerProvider(resource=resource)
