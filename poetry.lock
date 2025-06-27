@@ -4696,6 +4696,22 @@ packaging = ">=18.0"
 wrapt = ">=1.0.0,<2.0.0"
 
 [[package]]
+name = "opentelemetry-instrumentation-logging"
+version = "0.51b0"
+description = "OpenTelemetry Logging instrumentation"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "opentelemetry_instrumentation_logging-0.51b0-py3-none-any.whl", hash = "sha256:b0855cf8b3e37ae4fdb5b77982fbfa713778762c58db3071eb3ca6c97456a049"},
+    {file = "opentelemetry_instrumentation_logging-0.51b0.tar.gz", hash = "sha256:2adaba90fab85a80de24728153b42ef2a74dd80fda5a3b17f3f95c11bb27c3ff"},
+]
+
+[package.dependencies]
+opentelemetry-api = ">=1.12,<2.0"
+opentelemetry-instrumentation = "0.51b0"
+
+[[package]]
 name = "opentelemetry-instrumentation-requests"
 version = "0.51b0"
 description = "OpenTelemetry requests instrumentation"
@@ -8251,4 +8267,4 @@ tests = ["wikipedia"]
 [metadata]
 lock-version = "2.1"
 python-versions = "<3.14,>=3.10"
-content-hash = "f4c5a2bed096a7b999b49c002bd9ef41663c2f3a6dbb45f31d81f882d7eb4b11"
+content-hash = "36246dd52a1fd1899975fc193d272c29bd948043b8d93c8e56dd8569e47f3617"
