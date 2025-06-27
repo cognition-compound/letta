@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class MessageContentType(str, Enum):
@@ -75,6 +75,96 @@ ImageSourceUnion = Annotated[Union[UrlImage, Base64Image, LettaImage], Field(dis
 class ImageContent(MessageContent):
     type: Literal[MessageContentType.image] = Field(MessageContentType.image, description="The type of the message.")
     source: ImageSourceUnion = Field(..., description="The source of the image.")
+    _detail: Optional[str] = PrivateAttr(default=None)  # Store detail for URL images
+    
+    def __init__(self, **data):
+        """
+        Initialize ImageContent with support for legacy API parameters.
+        
+        This constructor handles backward compatibility for the old API format that used
+        'image_url' and 'detail' parameters directly, converting them to the new 'source' format.
+        
+        Args:
+            **data: Keyword arguments that may include:
+                - source: ImageSourceUnion (new format)
+                - image_url: str (legacy format)
+                - detail: Optional[str] (legacy format, only for URL images)
+        """
+        # Extract detail for URL images before processing
+        detail_for_url = None
+        
+        # Handle legacy API with image_url and detail parameters
+        if "image_url" in data and "source" not in data:
+            image_url = data.pop("image_url")
+            detail = data.pop("detail", None)
+            
+            # Determine source type based on URL format
+            if image_url.startswith("data:"):
+                # Parse data URL format: data:image/type;base64,data
+                parts = image_url.split(",", 1)
+                if len(parts) == 2:
+                    header = parts[0]
+                    data_content = parts[1]
+                    # Extract media type from header
+                    media_type = "image/jpeg"  # default
+                    if ":" in header and ";" in header:
+                        media_type = header.split(":")[1].split(";")[0]
+                    
+                    data["source"] = Base64Image(
+                        type=ImageSourceType.base64,
+                        media_type=media_type,
+                        data=data_content,
+                        detail=detail
+                    )
+                else:
+                    # Invalid data URL format, treat as regular URL
+                    data["source"] = UrlImage(
+                        type=ImageSourceType.url,
+                        url=image_url
+                    )
+                    # Store detail separately for URL images
+                    detail_for_url = detail
+            else:
+                # HTTP/HTTPS URL
+                data["source"] = UrlImage(
+                    type=ImageSourceType.url, 
+                    url=image_url
+                )
+                # Store detail separately for URL images
+                detail_for_url = detail
+        
+        super().__init__(**data)
+        
+        # Set the private attribute after initialization
+        if detail_for_url is not None:
+            self._detail = detail_for_url
+    
+    @property
+    def image_url(self) -> str:
+        """Get the image URL from the source."""
+        if isinstance(self.source, UrlImage):
+            return self.source.url
+        elif isinstance(self.source, Base64Image):
+            return f"data:{self.source.media_type};base64,{self.source.data}"
+        elif isinstance(self.source, LettaImage):
+            # For LettaImage, return data URL if data is available
+            if self.source.data and self.source.media_type:
+                return f"data:{self.source.media_type};base64,{self.source.data}"
+            else:
+                # Return a placeholder URL with file_id
+                return f"letta://file/{self.source.file_id}"
+        else:
+            raise ValueError(f"Unknown image source type: {type(self.source)}")
+    
+    @property
+    def detail(self) -> Optional[str]:
+        """Get the detail level from the source."""
+        if isinstance(self.source, (Base64Image, LettaImage)):
+            return self.source.detail
+        elif isinstance(self.source, UrlImage):
+            # For URL images, return stored detail or default to "auto"
+            return self._detail if self._detail is not None else "auto"
+        return None
 
 
 # -------------------------------
@@ -231,7 +321,7 @@ def create_letta_message_content_union_schema():
                 "text": "#/components/schemas/TextContent",
                 "image": "#/components/schemas/ImageContent",
                 "tool_call": "#/components/schemas/ToolCallContent",
-                "tool_return": "#/components/schemas/ToolCallContent",
+                "tool_return": "#/components/schemas/ToolReturnContent",  # Fixed: was incorrectly mapped to ToolCallContent
                 "reasoning": "#/components/schemas/ReasoningContent",
                 "redacted_reasoning": "#/components/schemas/RedactedReasoningContent",
                 "omitted_reasoning": "#/components/schemas/OmittedReasoningContent",

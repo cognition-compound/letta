@@ -324,7 +324,7 @@ def create_application() -> "FastAPI":
     settings.cors_origins.append("https://app.letta.com")
 
     if (os.getenv("LETTA_SERVER_SECURE") == "true") or "--secure" in sys.argv:
-        log.info(f"Using secure mode with password: {random_password}")
+        log.info("Using secure mode", password_length=len(random_password))
         app.add_middleware(CheckPasswordMiddleware)
 
     app.add_middleware(

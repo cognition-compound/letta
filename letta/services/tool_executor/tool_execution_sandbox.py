@@ -413,7 +413,10 @@ class ToolExecutionSandbox:
         return exception_class(e2b_execution.error.value)
 
     def get_running_e2b_sandbox_with_same_state(self, sandbox_config: SandboxConfig) -> Optional["Sandbox"]:
-        from e2b_code_interpreter import Sandbox
+        try:
+            from e2b_code_interpreter import Sandbox
+        except ImportError:
+            return None  # E2B not available, no sandboxes can be running
 
         # List running sandboxes and access metadata.
         running_sandboxes = self.list_running_e2b_sandboxes()
@@ -428,7 +431,13 @@ class ToolExecutionSandbox:
 
     @trace_method
     def create_e2b_sandbox_with_metadata_hash(self, sandbox_config: SandboxConfig) -> "Sandbox":
-        from e2b_code_interpreter import Sandbox
+        try:
+            from e2b_code_interpreter import Sandbox
+        except ImportError:
+            raise ImportError(
+                "E2B Code Interpreter is not installed. Please install it with: "
+                "pip install 'letta[cloud-tool-sandbox]' or pip install e2b-code-interpreter"
+            )
 
         state_hash = sandbox_config.fingerprint()
         e2b_config = sandbox_config.get_e2b_config()
@@ -459,7 +468,10 @@ class ToolExecutionSandbox:
         return sbx
 
     def list_running_e2b_sandboxes(self):
-        from e2b_code_interpreter import Sandbox
+        try:
+            from e2b_code_interpreter import Sandbox
+        except ImportError:
+            return []  # E2B not available, no sandboxes can be running
 
         # List running sandboxes and access metadata.
         return Sandbox.list()

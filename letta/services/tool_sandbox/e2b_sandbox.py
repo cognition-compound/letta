@@ -1,7 +1,13 @@
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from e2b.sandbox.commands.command_handle import CommandExitException
-from e2b_code_interpreter import AsyncSandbox
+try:
+    from e2b.sandbox.commands.command_handle import CommandExitException
+    from e2b_code_interpreter import AsyncSandbox
+    E2B_AVAILABLE = True
+except ImportError:
+    E2B_AVAILABLE = False
+    CommandExitException = Exception  # Dummy exception for type hints
+    AsyncSandbox = object  # Dummy class for type hints
 
 from letta.log import get_logger
 from letta.otel.tracing import log_event, trace_method
@@ -33,6 +39,11 @@ class AsyncToolSandboxE2B(AsyncToolSandboxBase):
         sandbox_config: Optional[SandboxConfig] = None,
         sandbox_env_vars: Optional[Dict[str, Any]] = None,
     ):
+        if not E2B_AVAILABLE:
+            raise ImportError(
+                "E2B Code Interpreter is not installed. Please install it with: "
+                "pip install 'letta[cloud-tool-sandbox]' or pip install e2b-code-interpreter"
+            )
         super().__init__(tool_name, args, user, tool_object, sandbox_config=sandbox_config, sandbox_env_vars=sandbox_env_vars)
         self.force_recreate = force_recreate
 

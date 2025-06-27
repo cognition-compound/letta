@@ -12,8 +12,22 @@ from letta.schemas.message import Message, MessageCreate
 from letta.schemas.tool_execution_result import ToolExecutionResult
 from letta.schemas.usage import LettaUsageStatistics
 from letta.schemas.user import User
-from letta.server.rest_api.utils import create_input_messages
 from letta.services.message_manager import MessageManager
+from letta.helpers.message_helper import convert_message_creates_to_messages
+
+
+def create_input_messages(input_messages: List[MessageCreate], agent_id: str, timezone: str, actor: User) -> List[Message]:
+    """
+    Converts a user input message into the internal structured format.
+
+    TODO (cliandy): this effectively duplicates the functionality of `convert_message_creates_to_messages`,
+    we should unify this when it's clear what message attributes we need.
+    """
+
+    messages = convert_message_creates_to_messages(input_messages, agent_id, timezone, wrap_user_message=False, wrap_system_message=False)
+    for message in messages:
+        message.organization_id = actor.organization_id
+    return messages
 
 
 def _create_letta_response(

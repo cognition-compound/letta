@@ -10,7 +10,7 @@ from starlette.responses import StreamingResponse
 from starlette.types import ASGIApp
 
 from letta.log import get_logger, get_async_logger, create_lazy_context, lazy_log_enabled, performance_timer
-from letta.server.rest_api.utils.logging_sanitizer import LoggingSanitizer
+from letta.server.rest_api.utils_pkg.logging_sanitizer import LoggingSanitizer
 from letta.server.rest_api.middleware.adaptive_log_sampler import (
     AdaptiveLogSampler, 
     SamplingConfig, 

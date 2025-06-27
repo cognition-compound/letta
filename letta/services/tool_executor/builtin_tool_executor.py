@@ -75,7 +75,13 @@ class LettaBuiltinToolExecutor(ToolExecutor):
         )
 
     async def run_code(self, agent_state: "AgentState", code: str, language: Literal["python", "js", "ts", "r", "java"]) -> str:
-        from e2b_code_interpreter import AsyncSandbox
+        try:
+            from e2b_code_interpreter import AsyncSandbox
+        except ImportError:
+            raise ImportError(
+                "E2B Code Interpreter is not installed. Please install it with: "
+                "pip install 'letta[cloud-tool-sandbox]' or pip install e2b-code-interpreter"
+            )
 
         if tool_settings.e2b_api_key is None:
             raise ValueError("E2B_API_KEY is not set")

@@ -171,7 +171,7 @@ def test_core_logging_imports():
 def test_sanitizer_imports():
     """Test that logging sanitizer can be imported and used."""
     try:
-        from letta.server.rest_api.utils.logging_sanitizer import LoggingSanitizer, sanitize_log_data
+        from letta.server.rest_api.utils_pkg.logging_sanitizer import LoggingSanitizer, sanitize_log_data
         
         # Test basic sanitization
         test_data = "password=secret123 api_key=abc123def456"
@@ -312,7 +312,7 @@ def test_logging_thread_safety():
 def test_sanitization_thread_safety():
     """Test that log sanitization caching is thread-safe."""
     try:
-        from letta.server.rest_api.utils.logging_sanitizer import LoggingSanitizer
+        from letta.server.rest_api.utils_pkg.logging_sanitizer import LoggingSanitizer
     except ImportError:
         print("Sanitizer not available, skipping thread safety test")
         return True
@@ -363,7 +363,7 @@ def test_sanitization_thread_safety():
 def test_sanitization_performance():
     """Test that log sanitization caching improves performance."""
     try:
-        from letta.server.rest_api.utils.logging_sanitizer import LoggingSanitizer
+        from letta.server.rest_api.utils_pkg.logging_sanitizer import LoggingSanitizer
     except ImportError:
         print("Sanitizer not available, skipping performance test")
         return True
@@ -562,7 +562,7 @@ def test_invalid_log_configuration():
 def test_malformed_data_sanitization():
     """Test that sanitizer handles malformed or edge case data."""
     try:
-        from letta.server.rest_api.utils.logging_sanitizer import LoggingSanitizer
+        from letta.server.rest_api.utils_pkg.logging_sanitizer import LoggingSanitizer
     except ImportError:
         print("Sanitizer not available, skipping malformed data test")
         return True
@@ -648,7 +648,7 @@ def test_end_to_end_logging():
     """Test complete logging flow from request to storage."""
     try:
         from letta.log import get_logger
-        from letta.server.rest_api.utils.logging_sanitizer import LoggingSanitizer
+        from letta.server.rest_api.utils_pkg.logging_sanitizer import LoggingSanitizer
         from letta.utils.logging_decorators import db_operation_logger
     except ImportError as e:
         print(f"Some logging components not available: {e}")
