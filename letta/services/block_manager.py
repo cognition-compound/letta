@@ -16,6 +16,13 @@ from letta.schemas.enums import ActorType
 from letta.schemas.user import User as PydanticUser
 from letta.server.db import db_registry
 from letta.utils import enforce_types
+from letta.utils.logging_decorators import (
+    db_create_logger,
+    db_delete_logger,
+    db_read_logger,
+    db_update_logger,
+    service_method_logger,
+)
 
 logger = get_logger(__name__)
 
@@ -40,6 +47,8 @@ class BlockManager:
 
     @trace_method
     @enforce_types
+    @db_create_logger(include_timing=True, include_result_info=True)
+    @service_method_logger(warn_threshold_ms=1000)
     async def create_or_update_block_async(self, block: PydanticBlock, actor: PydanticUser) -> PydanticBlock:
         """Create a new block based on the Block schema."""
         db_block = await self.get_block_by_id_async(block.id, actor)
@@ -119,6 +128,8 @@ class BlockManager:
 
     @trace_method
     @enforce_types
+    @db_update_logger(include_timing=True, include_result_info=True)
+    @service_method_logger(warn_threshold_ms=800)
     async def update_block_async(self, block_id: str, block_update: BlockUpdate, actor: PydanticUser) -> PydanticBlock:
         """Update a block by its ID with the given BlockUpdate object."""
         # Safety check for block
@@ -144,6 +155,8 @@ class BlockManager:
 
     @trace_method
     @enforce_types
+    @db_delete_logger(include_timing=True, include_result_info=True)
+    @service_method_logger(warn_threshold_ms=1000)
     async def delete_block_async(self, block_id: str, actor: PydanticUser) -> PydanticBlock:
         """Delete a block by its ID."""
         async with db_registry.async_session() as session:
@@ -227,6 +240,8 @@ class BlockManager:
 
     @trace_method
     @enforce_types
+    @db_read_logger(include_timing=True, include_result_info=True)
+    @service_method_logger(warn_threshold_ms=500)
     async def get_block_by_id_async(self, block_id: str, actor: Optional[PydanticUser] = None) -> Optional[PydanticBlock]:
         """Retrieve a block by its name."""
         async with db_registry.async_session() as session:

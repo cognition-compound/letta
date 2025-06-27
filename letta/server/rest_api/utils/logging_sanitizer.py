@@ -1,17 +1,22 @@
 """Utilities for sanitizing sensitive data in logs."""
 
 import re
+import threading
+from functools import lru_cache
 from typing import Any, Dict, List, Union
 
 
 class LoggingSanitizer:
     """Sanitizer for removing sensitive data from logs."""
     
+    # Thread lock for cache operations
+    _cache_lock = threading.RLock()
+    
     # Patterns for sensitive data
     SENSITIVE_PATTERNS = {
-        'api_key': re.compile(r'(api[_-]?key|apikey|token|bearer)\s*[=:]\s*[\'"]?([a-zA-Z0-9_-]{20,})[\'"]?', re.IGNORECASE),
+        'api_key': re.compile(r'(api[_-]?key|apikey|token|bearer)\s*[=:]\s*[\'"]?([a-zA-Z0-9_-]{8,})[\'"]?', re.IGNORECASE),
         'password': re.compile(r'(password|passwd|pwd)\s*[=:]\s*[\'"]?([^\s\'"]{4,})[\'"]?', re.IGNORECASE),
-        'authorization': re.compile(r'(authorization|auth)\s*[=:]\s*[\'"]?(bearer\s+[a-zA-Z0-9_-]{20,}|basic\s+[a-zA-Z0-9+/=]+)[\'"]?', re.IGNORECASE),
+        'authorization': re.compile(r'(authorization|auth)\s*[=:]\s*[\'"]?(bearer\s+[a-zA-Z0-9_-]{8,}|basic\s+[a-zA-Z0-9+/=]+)[\'"]?', re.IGNORECASE),
         'email': re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'),
         'credit_card': re.compile(r'\b(?:\d{4}[-\s]?){3}\d{4}\b'),
         'ssn': re.compile(r'\b\d{3}-?\d{2}-?\d{4}\b'),
@@ -31,19 +36,65 @@ class LoggingSanitizer:
         'x-csrf-token', 'x-session-id'
     }
     
-    @classmethod
-    def sanitize_string(cls, text: str) -> str:
-        """Sanitize sensitive data from a string."""
-        if not isinstance(text, str):
+    @staticmethod
+    @lru_cache(maxsize=512)
+    def _sanitize_string_cached(text: str) -> str:
+        """Cached sanitization for repeated patterns. Thread-safe via @lru_cache."""
+        if not text:
             return text
             
         sanitized = text
         
         # Apply all patterns
-        for pattern_name, pattern in cls.SENSITIVE_PATTERNS.items():
-            sanitized = pattern.sub(cls._mask_match, sanitized)
+        for pattern_name, pattern in LoggingSanitizer.SENSITIVE_PATTERNS.items():
+            sanitized = pattern.sub(LoggingSanitizer._mask_match, sanitized)
         
         return sanitized
+    
+    @classmethod 
+    def sanitize_string(cls, text: str) -> str:
+        """Sanitize sensitive data from a string with performance optimization."""
+        if text is None:
+            return ""
+        if not isinstance(text, str):
+            return str(text)
+        
+        # For very small strings, use direct processing to avoid cache overhead
+        if len(text) < 10:
+            sanitized = text
+            for pattern_name, pattern in cls.SENSITIVE_PATTERNS.items():
+                sanitized = pattern.sub(cls._mask_match, sanitized)
+            return sanitized
+        
+        # Use cached sanitization for longer strings to improve performance
+        try:
+            with cls._cache_lock:
+                return cls._sanitize_string_cached(text)
+        except TypeError:
+            # Fallback for unhashable types or other cache errors
+            sanitized = text
+            for pattern_name, pattern in cls.SENSITIVE_PATTERNS.items():
+                sanitized = pattern.sub(cls._mask_match, sanitized)
+            return sanitized
+    
+    @classmethod
+    def clear_cache(cls) -> None:
+        """Clear the sanitization cache. Thread-safe."""
+        with cls._cache_lock:
+            cls._sanitize_string_cached.cache_clear()
+    
+    @classmethod
+    def get_cache_info(cls) -> Dict[str, Any]:
+        """Get cache statistics for monitoring."""
+        with cls._cache_lock:
+            cache_info = cls._sanitize_string_cached.cache_info()
+            return {
+                'hits': cache_info.hits,
+                'misses': cache_info.misses,
+                'maxsize': cache_info.maxsize,
+                'currsize': cache_info.currsize,
+                'hit_rate': cache_info.hits / (cache_info.hits + cache_info.misses) if (cache_info.hits + cache_info.misses) > 0 else 0.0
+            }
     
     @classmethod
     def sanitize_dict(cls, data: Dict[str, Any], max_depth: int = 5) -> Dict[str, Any]:
@@ -144,7 +195,7 @@ class LoggingSanitizer:
         return cls.sanitize_string(body)
     
     @staticmethod
-    def _mask_match(match) -> str:
+    def _mask_match(match: re.Match[str]) -> str:
         """Replace a regex match with masked version."""
         full_match = match.group(0)
         if len(match.groups()) >= 2:
@@ -172,8 +223,8 @@ class LoggingSanitizer:
             return str_value[:3] + "***" + str_value[-2:]
 
 
-def sanitize_log_data(data: Union[str, Dict, List]) -> Union[str, Dict, List]:
-    """Convenience function to sanitize any log data."""
+def sanitize_log_data(data: Union[str, Dict[str, Any], List[Any]]) -> Union[str, Dict[str, Any], List[Any]]:
+    """Convenience function to sanitize any log data with thread-safe caching."""
     if isinstance(data, str):
         return LoggingSanitizer.sanitize_string(data)
     elif isinstance(data, dict):

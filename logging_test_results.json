@@ -1,0 +1,135 @@
+{
+  "timestamp": 1751050695.290011,
+  "total_tests": 17,
+  "passed_tests": 16,
+  "failed_tests": 1,
+  "success_rate": 94.11764705882352,
+  "total_duration_ms": 1366.743998893071,
+  "performance_metrics": {
+    "sanitization_cache_improvement": 1.0425052041958285,
+    "sanitization_cache_hit_rate": 0.9995,
+    "sampling_reduction_ratio": 0.1015,
+    "sampling_time_overhead": 1.3681328203825363
+  },
+  "test_details": [
+    {
+      "test": "Import core logging functions",
+      "passed": true,
+      "message": "",
+      "duration_ms": 1207.917915948201,
+      "timestamp": 1751050695.130013
+    },
+    {
+      "test": "Import logging sanitizer",
+      "passed": true,
+      "message": "",
+      "duration_ms": 2.506875025574118,
+      "timestamp": 1751050695.132542
+    },
+    {
+      "test": "Import logging decorators",
+      "passed": true,
+      "message": "",
+      "duration_ms": 2.149833017028868,
+      "timestamp": 1751050695.134708
+    },
+    {
+      "test": "Import adaptive log sampler",
+      "passed": true,
+      "message": "",
+      "duration_ms": 2.538624976295978,
+      "timestamp": 1751050695.137259
+    },
+    {
+      "test": "Import OTEL logging integration",
+      "passed": true,
+      "message": "",
+      "duration_ms": 4.986459040082991,
+      "timestamp": 1751050695.142256
+    },
+    {
+      "test": "Import enhanced log module structure",
+      "passed": true,
+      "message": "",
+      "duration_ms": 0.004665984306484461,
+      "timestamp": 1751050695.142277
+    },
+    {
+      "test": "Thread safety of logging configuration",
+      "passed": true,
+      "message": "",
+      "duration_ms": 122.95183399692178,
+      "timestamp": 1751050695.265245
+    },
+    {
+      "test": "Thread safety of log sanitization caching",
+      "passed": true,
+      "message": "",
+      "duration_ms": 0.827791984193027,
+      "timestamp": 1751050695.266123
+    },
+    {
+      "test": "Performance: Log sanitization caching",
+      "passed": false,
+      "message": "AssertionError: Cache should provide >50% improvement, got 1.04x",
+      "duration_ms": 0.546540948562324,
+      "timestamp": 1751050695.2667031
+    },
+    {
+      "test": "Performance: Adaptive log sampling",
+      "passed": true,
+      "message": "",
+      "duration_ms": 12.100499996449798,
+      "timestamp": 1751050695.279433
+    },
+    {
+      "test": "Environment variable configuration",
+      "passed": true,
+      "message": "",
+      "duration_ms": 2.187832957133651,
+      "timestamp": 1751050695.2816331
+    },
+    {
+      "test": "OTEL configuration handling",
+      "passed": true,
+      "message": "",
+      "duration_ms": 5.685666983481497,
+      "timestamp": 1751050695.287333
+    },
+    {
+      "test": "Error handling: Invalid log configuration",
+      "passed": true,
+      "message": "",
+      "duration_ms": 0.7041660137474537,
+      "timestamp": 1751050695.28806
+    },
+    {
+      "test": "Error handling: Malformed sensitive data",
+      "passed": true,
+      "message": "",
+      "duration_ms": 0.32479199580848217,
+      "timestamp": 1751050695.288397
+    },
+    {
+      "test": "Error handling: Concurrent access to sampler",
+      "passed": true,
+      "message": "",
+      "duration_ms": 1.1836669873446226,
+      "timestamp": 1751050695.289592
+    },
+    {
+      "test": "Integration: End-to-end logging flow",
+      "passed": true,
+      "message": "",
+      "duration_ms": 0.11233298573642969,
+      "timestamp": 1751050695.2897348
+    },
+    {
+      "test": "Integration: Middleware with sanitization and sampling",
+      "passed": true,
+      "message": "",
+      "duration_ms": 0.014500052202492952,
+      "timestamp": 1751050695.289761
+    }
+  ]
+}

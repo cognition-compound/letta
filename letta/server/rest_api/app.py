@@ -13,6 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 
 from letta.server.rest_api.middleware import RequestLoggingMiddleware, UserContextMiddleware
+from letta.server.rest_api.middleware.adaptive_log_sampler import SamplingConfig, SamplingStrategy
 
 from letta.__init__ import __version__
 from letta.agents.exceptions import IncompatibleAgentType
@@ -39,7 +40,7 @@ from letta.server.rest_api.routers.v1.organizations import router as organizatio
 from letta.server.rest_api.routers.v1.users import router as users_router  # TODO: decide on admin
 from letta.server.rest_api.static_files import mount_static_files
 from letta.server.server import SyncServer
-from letta.settings import settings
+from letta.settings import settings, log_settings
 
 # TODO(ethan)
 # NOTE(charles): @ethan I had to add this to get the global as the bottom to work
@@ -337,14 +338,31 @@ def create_application() -> "FastAPI":
     # Add user context middleware (must be before logging middleware)
     app.add_middleware(UserContextMiddleware)
     
+    # Configure adaptive log sampling based on settings
+    sampling_config = SamplingConfig(
+        strategy=SamplingStrategy(log_settings.sampling_strategy),
+        base_sample_rate=log_settings.base_sample_rate,
+        error_sample_rate=log_settings.error_sample_rate,
+        warning_sample_rate=log_settings.warning_sample_rate,
+        debug_sample_rate=log_settings.debug_sample_rate,
+        max_logs_per_second=log_settings.max_logs_per_second,
+        adaptive_window_seconds=log_settings.adaptive_window_seconds,
+        load_threshold=log_settings.load_threshold,
+        max_debug_per_second=log_settings.max_debug_per_second,
+        max_info_per_second=log_settings.max_info_per_second,
+        max_warning_per_second=log_settings.max_warning_per_second,
+    )
+    
     # Add request logging middleware for comprehensive HTTP tracking
     app.add_middleware(
         RequestLoggingMiddleware,
         log_level="DEBUG" if settings.debug else "INFO",
-        log_request_body=settings.debug,  # Only log request bodies in debug mode
-        log_response_body=False,  # Response body logging disabled for performance
-        max_body_size=2048,  # Limit body logging to 2KB
+        log_request_body=log_settings.log_request_bodies or settings.debug,  # Use setting or debug mode
+        log_response_body=log_settings.log_response_bodies,  # Use setting
+        max_body_size=log_settings.max_body_log_size,  # Use configured size
         skip_paths={"/v1/health", "/health", "/metrics", "/favicon.ico", "/docs", "/redoc", "/openapi.json"},
+        enable_sampling=log_settings.enable_log_sampling,
+        sampling_config=sampling_config,
     )
 
     # Set up OpenTelemetry based on standard environment variables

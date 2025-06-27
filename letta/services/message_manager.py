@@ -18,6 +18,13 @@ from letta.schemas.user import User as PydanticUser
 from letta.server.db import db_registry
 from letta.services.file_manager import FileManager
 from letta.utils import enforce_types
+from letta.utils.logging_decorators import (
+    db_create_logger,
+    db_delete_logger,
+    db_read_logger,
+    db_update_logger,
+    service_method_logger,
+)
 
 logger = get_logger(__name__)
 
@@ -42,6 +49,8 @@ class MessageManager:
 
     @enforce_types
     @trace_method
+    @db_read_logger(include_timing=True, include_result_info=True)
+    @service_method_logger(warn_threshold_ms=500)
     async def get_message_by_id_async(self, message_id: str, actor: PydanticUser) -> Optional[PydanticMessage]:
         """Fetch a message by ID."""
         async with db_registry.async_session() as session:
@@ -124,6 +133,8 @@ class MessageManager:
 
     @enforce_types
     @trace_method
+    @db_create_logger(include_timing=True, include_result_info=True)
+    @service_method_logger(warn_threshold_ms=2000)
     async def create_many_messages_async(self, pydantic_msgs: List[PydanticMessage], actor: PydanticUser) -> List[PydanticMessage]:
         """
         Create multiple messages in a single database transaction asynchronously.
@@ -266,6 +277,8 @@ class MessageManager:
 
     @enforce_types
     @trace_method
+    @db_update_logger(include_timing=True, include_result_info=True)
+    @service_method_logger(warn_threshold_ms=1000)
     async def update_message_by_id_async(self, message_id: str, message_update: MessageUpdate, actor: PydanticUser) -> PydanticMessage:
         """
         Updates an existing record in the database with values from the provided record object.
@@ -632,6 +645,8 @@ class MessageManager:
 
     @enforce_types
     @trace_method
+    @db_delete_logger(include_timing=True, include_result_info=True)
+    @service_method_logger(warn_threshold_ms=1500)
     async def delete_messages_by_ids_async(self, message_ids: List[str], actor: PydanticUser) -> int:
         """
         Efficiently deletes messages by their specific IDs,

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -23,7 +24,7 @@ from letta.constants import (
 from letta.helpers import ToolRulesSolver
 from letta.helpers.datetime_helpers import get_utc_time
 from letta.llm_api.llm_client import LLMClient
-from letta.log import get_audit_logger, get_logger
+from letta.log import get_audit_logger, get_logger, lazy_log_with_context, lazy_log_enabled
 from letta.orm import Agent as AgentModel
 from letta.orm import AgentPassage, AgentsTags
 from letta.orm import Block as BlockModel
@@ -90,6 +91,13 @@ from letta.services.passage_manager import PassageManager
 from letta.services.source_manager import SourceManager
 from letta.services.tool_manager import ToolManager
 from letta.utils import enforce_types, united_diff
+from letta.utils.logging_decorators import (
+    db_create_logger,
+    db_delete_logger,
+    db_read_logger,
+    db_update_logger,
+    service_method_logger,
+)
 
 logger = get_logger(__name__)
 audit_logger = get_audit_logger()
@@ -408,23 +416,31 @@ class AgentManager:
             }
         )
         
-        # Audit log for security tracking
-        audit_logger.info(
-            f"Agent lifecycle event: creation",
-            extra={
-                "event_type": "agent_lifecycle",
-                "action": "create",
-                "agent_id": agent_state.id,
-                "agent_name": agent_state.name,
-                "user_id": str(actor.id),
-                "organization_id": str(actor.organization_id) if actor.organization_id else None,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-        )
+        # Audit log for security tracking with lazy evaluation
+        if lazy_log_enabled(audit_logger, logging.INFO):
+            def expensive_context():
+                return {
+                    "event_type": "agent_lifecycle",
+                    "action": "create",
+                    "agent_id": agent_state.id,
+                    "agent_name": agent_state.name,
+                    "user_id": str(actor.id),
+                    "organization_id": str(actor.organization_id) if actor.organization_id else None,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            
+            lazy_log_with_context(
+                audit_logger,
+                logging.INFO,
+                "Agent lifecycle event: creation",
+                expensive_context=expensive_context
+            )
         
         return agent_state
 
     @trace_method
+    @db_create_logger(include_timing=True, include_result_info=True)
+    @service_method_logger(warn_threshold_ms=5000)
     async def create_agent_async(
         self, agent_create: CreateAgent, actor: PydanticUser, _test_only_force_id: Optional[str] = None
     ) -> PydanticAgentState:
@@ -807,6 +823,8 @@ class AgentManager:
 
     @trace_method
     @enforce_types
+    @db_update_logger(include_timing=True, include_result_info=True)
+    @service_method_logger(warn_threshold_ms=3000)
     async def update_agent_async(
         self,
         agent_id: str,
@@ -1166,6 +1184,8 @@ class AgentManager:
 
     @trace_method
     @enforce_types
+    @db_read_logger(include_timing=True, include_result_info=True)
+    @service_method_logger(warn_threshold_ms=1000)
     async def get_agent_by_id_async(
         self,
         agent_id: str,
@@ -1290,6 +1310,8 @@ class AgentManager:
 
     @trace_method
     @enforce_types
+    @db_delete_logger(include_timing=True, include_result_info=False)
+    @service_method_logger(warn_threshold_ms=2000)
     async def delete_agent_async(self, agent_id: str, actor: PydanticUser) -> None:
         """
         Deletes an agent and its associated relationships.
