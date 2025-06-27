@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import letta.constants as constants
 from letta.functions.mcp_client.types import MCPServerType, MCPTool, SSEServerConfig, StdioServerConfig, StreamableHTTPServerConfig
 from letta.log import get_logger
+from letta.orm.enums import ToolType
 from letta.orm.errors import NoResultFound
 from letta.orm.mcp_server import MCPServer as MCPServerModel
 from letta.schemas.mcp import MCPServer, UpdateMCPServer, UpdateSSEMCPServer, UpdateStdioMCPServer, UpdateStreamableHTTPMCPServer
