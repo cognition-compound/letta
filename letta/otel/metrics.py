@@ -1,18 +1,24 @@
+import os
 import re
 import time
-from typing import List
+from typing import List, Optional
 
 from fastapi import FastAPI, Request
 from opentelemetry import metrics
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.metrics import Meter, NoOpMeter
+from opentelemetry.sdk.environment_variables import OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_METRICS_ENDPOINT, OTEL_SERVICE_NAME
+
+# Standard OTEL env var names (not in SDK constants)
+OTEL_METRICS_EXPORTER = "OTEL_METRICS_EXPORTER"
 from opentelemetry.sdk.metrics import Counter, Histogram, MeterProvider
-from opentelemetry.sdk.metrics.export import AggregationTemporality, PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.export import AggregationTemporality, ConsoleMetricExporter, PeriodicExportingMetricReader
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
 from letta.helpers.datetime_helpers import ns_to_ms
 from letta.log import get_logger
 from letta.otel.context import add_ctx_attribute, get_ctx_attributes
-from letta.otel.resource import get_resource, is_pytest_environment
+from letta.otel.resource import is_pytest_environment
 from letta.settings import settings
 
 logger = get_logger(__name__)
@@ -102,27 +108,70 @@ def _record_endpoint_metrics(
 
 
 def setup_metrics(
-    endpoint: str,
-    app: FastAPI | None = None,
-    service_name: str = "memgpt-server",
+    app: Optional[FastAPI] = None,
+    service_name: Optional[str] = None,
 ) -> None:
+    """Set up OpenTelemetry metrics using standard OTEL configuration.
+
+    This function respects standard OTEL environment variables:
+    - OTEL_METRICS_EXPORTER: The metrics exporter to use (default: "otlp")
+    - OTEL_EXPORTER_OTLP_ENDPOINT: The OTLP endpoint
+    - OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: Specific endpoint for metrics
+    - OTEL_SERVICE_NAME: The service name
+    - OTEL_RESOURCE_ATTRIBUTES: Additional resource attributes
+
+    Args:
+        app: Optional FastAPI app to instrument
+        service_name: Optional service name override (defaults to OTEL_SERVICE_NAME or "letta-server")
+    """
     if is_pytest_environment():
         return
-    assert endpoint
 
     global _is_metrics_initialized, _meter
-    preferred_temporality = AggregationTemporality(settings.otel_preferred_temporality)
-    otlp_metric_exporter = OTLPMetricExporter(
-        endpoint=endpoint,
-        preferred_temporality={
-            # Add more as needed here.
-            Counter: preferred_temporality,
-            Histogram: preferred_temporality,
-        },
-    )
-    metric_reader = PeriodicExportingMetricReader(exporter=otlp_metric_exporter)
 
-    meter_provider = MeterProvider(resource=get_resource(service_name), metric_readers=[metric_reader])
+    # Check if OTEL is configured via environment
+    metrics_exporter = os.environ.get(OTEL_METRICS_EXPORTER, "otlp")
+    otlp_endpoint = os.environ.get(OTEL_EXPORTER_OTLP_METRICS_ENDPOINT) or os.environ.get(OTEL_EXPORTER_OTLP_ENDPOINT)
+
+    # Skip if no endpoint configured and using OTLP
+    if metrics_exporter == "otlp" and not otlp_endpoint:
+        logger.debug("No OTLP endpoint configured, skipping OpenTelemetry metrics setup")
+        return
+
+    # Get service name from env or parameter
+    if not service_name:
+        service_name = os.environ.get(OTEL_SERVICE_NAME, "letta-server")
+
+    # Create resource - merge with any existing OTEL resource attributes
+    resource = Resource.create({SERVICE_NAME: service_name})
+
+    # Configure exporter based on OTEL_METRICS_EXPORTER
+    if metrics_exporter == "none":
+        logger.info("OpenTelemetry metrics disabled (OTEL_METRICS_EXPORTER=none)")
+        return
+    elif metrics_exporter == "console":
+        exporter = ConsoleMetricExporter()
+    elif metrics_exporter == "otlp":
+        # Let OTLPMetricExporter handle endpoint configuration from env vars
+        preferred_temporality = AggregationTemporality(settings.otel_preferred_temporality)
+        exporter = OTLPMetricExporter(
+            preferred_temporality={
+                Counter: preferred_temporality,
+                Histogram: preferred_temporality,
+            }
+        )
+    else:
+        logger.warning(f"Unknown metrics exporter: {metrics_exporter}, defaulting to OTLP")
+        preferred_temporality = AggregationTemporality(settings.otel_preferred_temporality)
+        exporter = OTLPMetricExporter(
+            preferred_temporality={
+                Counter: preferred_temporality,
+                Histogram: preferred_temporality,
+            }
+        )
+
+    metric_reader = PeriodicExportingMetricReader(exporter=exporter)
+    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
     metrics.set_meter_provider(meter_provider)
     _meter = metrics.get_meter(__name__)
 
@@ -130,6 +179,7 @@ def setup_metrics(
         app.middleware("http")(_otel_metric_middleware)
 
     _is_metrics_initialized = True
+    logger.info(f"OpenTelemetry metrics initialized with exporter: {metrics_exporter}")
 
 
 def get_letta_meter() -> Meter:

@@ -17,7 +17,7 @@ def get_resource(service_name: str) -> Resource:
             "letta.version": letta_version,
         }
         if _env != "PRODUCTION":
-            resource_dict["device.id"] = uuid.getnode()  # MAC address as unique device identifier,
+            resource_dict["device.id"] = str(uuid.getnode())  # MAC address as unique device identifier,
         _resources[(service_name, _env)] = Resource.create(resource_dict)
     return _resources[(service_name, _env)]
 

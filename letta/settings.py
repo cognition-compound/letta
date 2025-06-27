@@ -207,12 +207,16 @@ class Settings(BaseSettings):
     multi_agent_concurrent_sends: int = 50
 
     # telemetry logging
-    otel_exporter_otlp_endpoint: Optional[str] = None  # otel default: "http://localhost:4317"
+    otel_exporter_otlp_endpoint: Optional[str] = Field(
+        default=None, deprecated="Use standard OTEL_EXPORTER_OTLP_ENDPOINT environment variable instead"
+    )  # Deprecated: use OTEL_EXPORTER_OTLP_ENDPOINT
     otel_preferred_temporality: Optional[int] = Field(
         default=1, ge=0, le=2, description="Exported metric temporality. {0: UNSPECIFIED, 1: DELTA, 2: CUMULATIVE}"
     )
     disable_tracing: bool = False
     llm_api_logging: bool = True
+    otel_log_level: str = Field(default="INFO", description="Minimum log level to export to OTEL (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+    otel_include_console_logs: bool = Field(default=True, description="Whether to export console logs to OTEL")
 
     # uvicorn settings
     uvicorn_workers: int = 1

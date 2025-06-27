@@ -24,6 +24,12 @@ exporters:
       max_megabytes: 100
       max_days: 7
       max_backups: 5
+  file/logs:
+    path: ${HOME}/.letta/logs/otlp-logs.json
+    rotation:
+      max_megabytes: 100
+      max_days: 7
+      max_backups: 5
   clickhouse:
     endpoint: ${CLICKHOUSE_ENDPOINT}
     database: ${CLICKHOUSE_DATABASE}
@@ -51,3 +57,7 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [file/metrics, clickhouse]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [file/logs, clickhouse]

@@ -1,4 +1,5 @@
 import inspect
+import os
 import re
 import time
 from functools import wraps
@@ -10,12 +11,17 @@ from fastapi.responses import JSONResponse
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
+from opentelemetry.sdk.environment_variables import OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, OTEL_SERVICE_NAME
+
+# Standard OTEL env var names (not in SDK constants)
+OTEL_TRACES_EXPORTER = "OTEL_TRACES_EXPORTER"
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from opentelemetry.trace import Status, StatusCode
 
 from letta.log import get_logger
-from letta.otel.resource import get_resource, is_pytest_environment
+from letta.otel.resource import is_pytest_environment
 from letta.settings import settings
 
 logger = get_logger(__name__)  # TODO: set up logger config for this
@@ -118,18 +124,60 @@ async def _trace_error_handler(_request: Request, exc: Exception) -> JSONRespons
 
 
 def setup_tracing(
-    endpoint: str,
     app: Optional[FastAPI] = None,
-    service_name: str = "memgpt-server",
+    service_name: Optional[str] = None,
 ) -> None:
+    """Set up OpenTelemetry tracing using standard OTEL configuration.
+
+    This function respects standard OTEL environment variables:
+    - OTEL_TRACES_EXPORTER: The traces exporter to use (default: "otlp")
+    - OTEL_EXPORTER_OTLP_ENDPOINT: The OTLP endpoint
+    - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: Specific endpoint for traces
+    - OTEL_SERVICE_NAME: The service name
+    - OTEL_RESOURCE_ATTRIBUTES: Additional resource attributes
+
+    Args:
+        app: Optional FastAPI app to instrument
+        service_name: Optional service name override (defaults to OTEL_SERVICE_NAME or "letta-server")
+    """
     if is_pytest_environment():
         return
-    assert endpoint
 
     global _is_tracing_initialized
 
-    tracer_provider = TracerProvider(resource=get_resource(service_name))
-    tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+    # Check if OTEL is configured via environment
+    traces_exporter = os.environ.get(OTEL_TRACES_EXPORTER, "otlp")
+    otlp_endpoint = os.environ.get(OTEL_EXPORTER_OTLP_TRACES_ENDPOINT) or os.environ.get(OTEL_EXPORTER_OTLP_ENDPOINT)
+
+    # Skip if no endpoint configured and using OTLP
+    if traces_exporter == "otlp" and not otlp_endpoint:
+        logger.debug("No OTLP endpoint configured, skipping OpenTelemetry tracing setup")
+        return
+
+    # Get service name from env or parameter
+    if not service_name:
+        service_name = os.environ.get(OTEL_SERVICE_NAME, "letta-server")
+
+    # Create resource - merge with any existing OTEL resource attributes
+    resource = Resource.create({SERVICE_NAME: service_name})
+
+    # Create tracer provider
+    tracer_provider = TracerProvider(resource=resource)
+
+    # Configure exporter based on OTEL_TRACES_EXPORTER
+    if traces_exporter == "none":
+        logger.info("OpenTelemetry tracing disabled (OTEL_TRACES_EXPORTER=none)")
+        return
+    elif traces_exporter == "console":
+        exporter = ConsoleSpanExporter()
+    elif traces_exporter == "otlp":
+        # Let OTLPSpanExporter handle endpoint configuration from env vars
+        exporter = OTLPSpanExporter()
+    else:
+        logger.warning(f"Unknown traces exporter: {traces_exporter}, defaulting to OTLP")
+        exporter = OTLPSpanExporter()
+
+    tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
     _is_tracing_initialized = True
     trace.set_tracer_provider(tracer_provider)
 
@@ -162,6 +210,8 @@ def setup_tracing(
         app.exception_handler(HTTPException)(_trace_error_handler)
         app.exception_handler(RequestValidationError)(_trace_error_handler)
         app.exception_handler(Exception)(_trace_error_handler)
+
+    logger.info(f"OpenTelemetry tracing initialized with exporter: {traces_exporter}")
 
 
 def trace_method(func):

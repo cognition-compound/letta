@@ -5,11 +5,6 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
-  filelog:
-    include:
-      - /root/.letta/logs/Letta.log
-    multiline:
-      line_start_pattern: ^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}
 
 processors:
   batch:
@@ -49,7 +44,7 @@ service:
       processors: [batch]
       exporters: [clickhouse]
     logs:
-      receivers: [filelog]
+      receivers: [otlp]
       processors: [batch]
       exporters: [clickhouse]
     metrics:
