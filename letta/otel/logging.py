@@ -52,6 +52,11 @@ def setup_logging() -> None:
         return
 
     global _is_logging_initialized
+    
+    # Prevent duplicate initialization
+    if _is_logging_initialized:
+        logger.debug("OpenTelemetry logging already initialized, skipping setup")
+        return
 
     # Check if OTEL is configured via environment
     logs_exporter = os.environ.get(OTEL_LOGS_EXPORTER, "otlp")
@@ -92,14 +97,27 @@ def setup_logging() -> None:
     log_level = getattr(logging, settings.otel_log_level.upper(), logging.INFO)
     otlp_handler = OTLPLogHandler(level=log_level, logger_provider=logger_provider)
 
+    # Helper function to check if handler already exists
+    def has_otlp_handler(target_logger):
+        """Check if logger already has an OTLP handler to prevent duplicates."""
+        return any(isinstance(handler, OTLPLogHandler) for handler in target_logger.handlers)
+
     # Add handler to root logger if console logs should be included
     if settings.otel_include_console_logs:
         root_logger = logging.getLogger()
-        root_logger.addHandler(otlp_handler)
+        if not has_otlp_handler(root_logger):
+            root_logger.addHandler(otlp_handler)
+            logger.debug("Added OTLP handler to root logger")
+        else:
+            logger.debug("OTLP handler already exists on root logger, skipping")
 
     # Always add to Letta logger
     letta_logger = logging.getLogger("Letta")
-    letta_logger.addHandler(otlp_handler)
+    if not has_otlp_handler(letta_logger):
+        letta_logger.addHandler(otlp_handler)
+        logger.debug("Added OTLP handler to Letta logger")
+    else:
+        logger.debug("OTLP handler already exists on Letta logger, skipping")
 
     _is_logging_initialized = True
     logger.info(f"OpenTelemetry logging initialized with exporter: {logs_exporter}")
