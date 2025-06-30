@@ -1,12 +1,20 @@
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Set
 
 import numpy as np
 from sqlalchemy import Select, and_, asc, desc, func, literal, nulls_last, or_, select, union_all
 from sqlalchemy.sql.expression import exists
 
 from letta import system
-from letta.constants import IN_CONTEXT_MEMORY_KEYWORD, MAX_EMBEDDING_DIM, STRUCTURED_OUTPUT_MODELS
+from letta.constants import (
+    BASE_MEMORY_TOOLS,
+    BASE_MEMORY_TOOLS_V2,
+    BASE_TOOLS,
+    DEPRECATED_BASE_TOOLS,
+    IN_CONTEXT_MEMORY_KEYWORD,
+    MAX_EMBEDDING_DIM,
+    STRUCTURED_OUTPUT_MODELS,
+)
 from letta.embeddings import embedding_model
 from letta.helpers import ToolRulesSolver
 from letta.helpers.datetime_helpers import format_datetime, get_local_time, get_local_time_fast
@@ -169,6 +177,14 @@ def derive_system_message(agent_type: AgentType, enable_sleeptime: Optional[bool
         elif agent_type == AgentType.sleeptime_agent:
             # v2 drops references to specific blocks, and instead relies on the block description injections
             system = gpt_system.get_system_text("sleeptime_v2")
+
+        # ReAct
+        elif agent_type == AgentType.react_agent:
+            system = gpt_system.get_system_text("react")
+
+        # Workflow
+        elif agent_type == AgentType.workflow_agent:
+            system = gpt_system.get_system_text("workflow")
 
         else:
             raise ValueError(f"Invalid agent type: {agent_type}")
@@ -1030,3 +1046,10 @@ def build_agent_passage_query(
             query = query.order_by(AgentPassage.created_at.desc(), AgentPassage.id.asc())
 
     return query
+
+
+def calculate_base_tools(is_v2: bool) -> Set[str]:
+    if is_v2:
+        return (set(BASE_TOOLS) - set(DEPRECATED_BASE_TOOLS)) | set(BASE_MEMORY_TOOLS_V2)
+    else:
+        return (set(BASE_TOOLS) - set(DEPRECATED_BASE_TOOLS)) | set(BASE_MEMORY_TOOLS)

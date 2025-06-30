@@ -686,3 +686,39 @@ def test_timezone(client: Letta):
         or "PDT" in response.messages[1].content
         or "PST" in response.messages[1].content
     )
+
+    # test updating the timezone
+    client.agents.modify(agent_id=agent.id, timezone="America/New_York")
+    agent = client.agents.retrieve(agent_id=agent.id)
+    assert agent.timezone == "America/New_York"
+
+
+def test_attach_sleeptime_block(client: Letta):
+
+    agent = client.agents.create(
+        memory_blocks=[{"label": "human", "value": ""}, {"label": "persona", "value": ""}],
+        model="letta/letta-free",
+        embedding="letta/letta-free",
+        enable_sleeptime=True,
+    )
+
+    # get the sleeptime agent
+    # get the multi-agent group
+    group_id = agent.multi_agent_group.id
+    group = client.groups.retrieve(group_id=group_id)
+    agent_ids = group.agent_ids
+    sleeptime_id = [id for id in agent_ids if id != agent.id][0]
+
+    # attach a new block
+    block = client.blocks.create(label="test", value="test")
+    client.agents.blocks.attach(agent_id=agent.id, block_id=block.id)
+
+    # verify block is attached to both agents
+    blocks = client.agents.blocks.list(agent_id=agent.id)
+    assert block.id in [b.id for b in blocks]
+
+    blocks = client.agents.blocks.list(agent_id=sleeptime_id)
+    assert block.id in [b.id for b in blocks]
+
+    # cleanup
+    client.agents.delete(agent.id)

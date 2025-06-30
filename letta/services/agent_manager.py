@@ -18,6 +18,7 @@ from letta.constants import (
     BASE_VOICE_SLEEPTIME_CHAT_TOOLS,
     BASE_VOICE_SLEEPTIME_TOOLS,
     DEFAULT_TIMEZONE,
+    DEPRECATED_BASE_TOOLS,
     FILES_TOOLS,
     MULTI_AGENT_TOOLS,
 )
@@ -79,6 +80,7 @@ from letta.services.helpers.agent_manager_helper import (
     build_agent_passage_query,
     build_passage_query,
     build_source_passage_query,
+    calculate_base_tools,
     check_supports_structured_output,
     compile_system_message,
     derive_system_message,
@@ -273,9 +275,13 @@ class AgentManager:
             elif agent_create.enable_sleeptime:
                 tool_names |= set(BASE_SLEEPTIME_CHAT_TOOLS)
             elif agent_create.agent_type == AgentType.memgpt_v2_agent:
-                tool_names |= set(BASE_TOOLS + BASE_MEMORY_TOOLS_V2)
+                tool_names |= calculate_base_tools(is_v2=True)
+            elif agent_create.agent_type == AgentType.react_agent:
+                pass  # no default tools
+            elif agent_create.agent_type == AgentType.workflow_agent:
+                pass  # no default tools
             else:
-                tool_names |= set(BASE_TOOLS + BASE_MEMORY_TOOLS)
+                tool_names |= calculate_base_tools(is_v2=False)
         if agent_create.include_multi_agent_tools:
             tool_names |= set(MULTI_AGENT_TOOLS)
 
@@ -481,17 +487,38 @@ class AgentManager:
             elif agent_create.enable_sleeptime:
                 tool_names |= set(BASE_SLEEPTIME_CHAT_TOOLS)
             elif agent_create.agent_type == AgentType.memgpt_v2_agent:
-                tool_names |= set(BASE_TOOLS + BASE_MEMORY_TOOLS_V2)
+                tool_names |= calculate_base_tools(is_v2=True)
+            elif agent_create.agent_type == AgentType.react_agent:
+                pass  # no default tools
+            elif agent_create.agent_type == AgentType.workflow_agent:
+                pass  # no default tools
             else:
-                tool_names |= set(BASE_TOOLS + BASE_MEMORY_TOOLS)
+                tool_names |= calculate_base_tools(is_v2=False)
         if agent_create.include_multi_agent_tools:
             tool_names |= set(MULTI_AGENT_TOOLS)
+
+        # take out the deprecated tool names
+        tool_names.difference_update(set(DEPRECATED_BASE_TOOLS))
 
         supplied_ids = set(agent_create.tool_ids or [])
 
         source_ids = agent_create.source_ids or []
+
+        # Create default source if requested
+        if agent_create.include_default_source:
+            default_source = PydanticSource(
+                name=f"{agent_create.name} External Data Source",
+                embedding_config=agent_create.embedding_config,
+            )
+            created_source = await self.source_manager.create_source(default_source, actor)
+            source_ids.append(created_source.id)
+
         identity_ids = agent_create.identity_ids or []
         tag_values = agent_create.tags or []
+
+        # if the agent type is workflow, we set the autoclear to forced true
+        if agent_create.agent_type == AgentType.workflow_agent:
+            agent_create.message_buffer_autoclear = True
 
         async with db_registry.async_session() as session:
             async with session.begin():
@@ -860,6 +887,7 @@ class AgentManager:
                 "response_format": agent_update.response_format,
                 "last_run_completion": agent_update.last_run_completion,
                 "last_run_duration_ms": agent_update.last_run_duration_ms,
+                "timezone": agent_update.timezone,
             }
             for col, val in scalar_updates.items():
                 if val is not None:
@@ -2156,6 +2184,7 @@ class AgentManager:
 
             # Attach block to the main agent
             agent.core_memory.append(block)
+            # await agent.update_async(session, actor=actor, no_commit=True)
             await agent.update_async(session)
 
             # If agent is part of a sleeptime group, attach block to the sleeptime_agent
@@ -2168,11 +2197,16 @@ class AgentManager:
                             other_agent = await AgentModel.read_async(db_session=session, identifier=other_agent_id, actor=actor)
                             if other_agent.agent_type == AgentType.sleeptime_agent and block not in other_agent.core_memory:
                                 other_agent.core_memory.append(block)
-                                await other_agent.update_async(session, actor=actor, no_commit=True)
+                                # await other_agent.update_async(session, actor=actor, no_commit=True)
+                                await other_agent.update_async(session, actor=actor)
                         except NoResultFound:
                             # Agent might not exist anymore, skip
                             continue
-            session.commit()
+
+            # TODO: @andy/caren
+            # TODO: Ideally we do two no commits on the update_async calls, and then commit here - but that errors for some reason?
+            # TODO: I have too many things rn so lets look at this later
+            # await session.commit()
 
             return await agent.to_pydantic_async()
 
