@@ -8,10 +8,6 @@ from pydantic import Field
 from letta.schemas.enums import ToolRuleType
 from letta.schemas.letta_base import LettaBase
 
-from letta.log import get_logger
-
-logger = get_logger(__name__)
-
 
 class BaseToolRule(LettaBase):
     __id_prefix__ = "tool_rule"
@@ -35,6 +31,8 @@ class BaseToolRule(LettaBase):
             template = Template(template_to_use)
             return template.render(**self.model_dump())
         except Exception as e:
+            from letta.log import get_logger
+            logger = get_logger(__name__)
             logger.warning(
                 f"Failed to render prompt template for tool rule '{self.tool_name}' (type: {self.type}). "
                 f"Template: '{template_to_use}'. Error: {e}"
