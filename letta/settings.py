@@ -6,9 +6,6 @@ from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from letta.local_llm.constants import DEFAULT_WRAPPER_NAME
-from letta.log import get_logger
-
-logger = get_logger(__name__)
 
 
 class ToolSettings(BaseSettings):
@@ -167,6 +164,8 @@ if "--use-file-pg-uri" in sys.argv:
     try:
         with open(Path.home() / ".letta/pg_uri", "r") as f:
             default_pg_uri = f.read()
+            from letta.log import get_logger
+            logger = get_logger(__name__)
             logger.info(f"Read pg_uri from ~/.letta/pg_uri: {default_pg_uri}")
     except FileNotFoundError:
         pass
