@@ -80,7 +80,7 @@ async def _update_trace_attributes(request: Request):
 
     # Add path params
     for key, value in request.path_params.items():
-        span.set_attribute(f"http.{key}", value)
+        _safe_set_attribute(span, f"http.{key}", value)
 
     # Add the following headers to span if available
     header_attributes = {
@@ -93,14 +93,13 @@ async def _update_trace_attributes(request: Request):
     }
     for header_key, span_key in header_attributes.items():
         header_value = request.headers.get(header_key)
-        if header_value:
-            span.set_attribute(span_key, header_value)
+        _safe_set_attribute(span, span_key, header_value)
 
     # Add request body if available
     try:
         body = await request.json()
         for key, value in body.items():
-            span.set_attribute(f"http.request.body.{key}", str(value))
+            _safe_set_attribute(span, f"http.request.body.{key}", value)
     except Exception:
         pass
 
@@ -232,8 +231,7 @@ def trace_method(func):
                 param_items = param_items[1:]
 
             for name, value in param_items:
-                # Convert value to string to avoid serialization issues
-                span.set_attribute(f"parameter.{name}", str(value))
+                _safe_set_attribute(span, f"parameter.{name}", value)
         except:
             pass
 
@@ -268,6 +266,24 @@ def log_attributes(attributes: Dict[str, Any]) -> None:
     current_span = trace.get_current_span()
     if current_span:
         current_span.set_attributes(attributes)
+
+
+def _safe_set_attribute(span, key: str, value: Any) -> None:
+    """Safely set a span attribute, filtering out None values and ensuring valid types.
+    
+    OpenTelemetry requires attributes to be strings, numbers, booleans, or sequences of these types.
+    This function validates and converts values to prevent OTEL validation errors.
+    """
+    if value is None:
+        return  # Skip None values entirely
+    
+    # Convert to string if not a primitive type
+    if not isinstance(value, (str, bool, int, float)):
+        value = str(value)
+    
+    # Only set if we have a valid, non-empty value
+    if value != "" and value != "None":
+        span.set_attribute(key, value)
 
 
 def log_event(name: str, attributes: Optional[Dict[str, Any]] = None, timestamp: Optional[int] = None) -> None:

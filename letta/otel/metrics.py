@@ -18,6 +18,25 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from letta.helpers.datetime_helpers import ns_to_ms
 from letta.log import get_logger
 from letta.otel.context import add_ctx_attribute, get_ctx_attributes
+from typing import Any
+
+
+def _safe_add_ctx_attribute(key: str, value: Any) -> None:
+    """Safely add context attribute, filtering out None values and ensuring valid types.
+    
+    OpenTelemetry requires attributes to be strings, numbers, booleans, or sequences of these types.
+    This function validates and converts values to prevent OTEL validation errors.
+    """
+    if value is None:
+        return  # Skip None values entirely
+    
+    # Convert to string if not a primitive type
+    if not isinstance(value, (str, bool, int, float)):
+        value = str(value)
+    
+    # Only set if we have a valid, non-empty value
+    if value != "" and value != "None":
+        add_ctx_attribute(key, value)
 from letta.otel.resource import is_pytest_environment
 from letta.settings import settings
 
@@ -49,8 +68,7 @@ async def _otel_metric_middleware(request: Request, call_next):
 
     for header_key, otel_key in header_attributes.items():
         header_value = request.headers.get(header_key)
-        if header_value:
-            add_ctx_attribute(otel_key, header_value)
+        _safe_add_ctx_attribute(otel_key, header_value)
 
     # Opt-in check for latency / error tracking
     endpoint_path = f"{request.method} {request.url.path}"
