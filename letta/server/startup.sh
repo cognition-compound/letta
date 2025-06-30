@@ -11,29 +11,51 @@ log() {
 
 # Function to validate environment variables
 validate_env() {
-    if [ -z "$LETTA_PG_URI" ]; then
-        log "ERROR: LETTA_PG_URI environment variable is required"
-        log "Please set LETTA_PG_URI to your PostgreSQL connection string"
-        log "Example: postgresql://user:password@host:port/database"
+    # Check if individual database variables are set
+    if [ -n "$LETTA_PG_HOST" ] && [ -n "$LETTA_PG_PORT" ] && [ -n "$LETTA_PG_USER" ] && [ -n "$LETTA_PG_PASSWORD" ] && [ -n "$LETTA_PG_DB" ]; then
+        log "Using individual PostgreSQL configuration:"
+        log "  Host: $LETTA_PG_HOST"
+        log "  Port: $LETTA_PG_PORT"
+        log "  Database: $LETTA_PG_DB"
+        log "  User: $LETTA_PG_USER"
+        log "  Password: ****"
+    elif [ -n "$LETTA_PG_URI" ]; then
+        log "Using PostgreSQL URI: ${LETTA_PG_URI%:*}:****@${LETTA_PG_URI##*@}"
+    else
+        log "ERROR: Database configuration is required"
+        log "Please provide either:"
+        log "  1. Individual variables: LETTA_PG_HOST, LETTA_PG_PORT, LETTA_PG_USER, LETTA_PG_PASSWORD, LETTA_PG_DB"
+        log "  2. Complete URI: LETTA_PG_URI (postgresql://user:password@host:port/database)"
         exit 1
     fi
-    
-    log "Using PostgreSQL database: ${LETTA_PG_URI%:*}:****@${LETTA_PG_URI##*@}"
 }
 
 # Function to wait for external PostgreSQL to be ready
 wait_for_external_postgres() {
     local max_attempts=30
     local attempt=0
+    local host
+    local port
+    local user
     
     log "Waiting for external PostgreSQL to be ready..."
     
-    while [ $attempt -lt $max_attempts ]; do
+    # Use individual variables if available, otherwise extract from URI
+    if [ -n "$LETTA_PG_HOST" ] && [ -n "$LETTA_PG_PORT" ] && [ -n "$LETTA_PG_USER" ]; then
+        host="$LETTA_PG_HOST"
+        port="$LETTA_PG_PORT"
+        user="$LETTA_PG_USER"
+    elif [ -n "$LETTA_PG_URI" ]; then
         # Extract connection details from LETTA_PG_URI for pg_isready
-        local host=$(echo "$LETTA_PG_URI" | sed -n 's/.*@\([^:]*\):.*/\1/p')
-        local port=$(echo "$LETTA_PG_URI" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
-        local user=$(echo "$LETTA_PG_URI" | sed -n 's/.*:\/\/\([^:]*\):.*/\1/p')
-        
+        host=$(echo "$LETTA_PG_URI" | sed -n 's/.*@\([^:]*\):.*/\1/p')
+        port=$(echo "$LETTA_PG_URI" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
+        user=$(echo "$LETTA_PG_URI" | sed -n 's/.*:\/\/\([^:]*\):.*/\1/p')
+    else
+        log "ERROR: No database configuration found"
+        exit 1
+    fi
+    
+    while [ $attempt -lt $max_attempts ]; do
         if pg_isready -h "$host" -p "$port" -U "$user" > /dev/null 2>&1; then
             log "PostgreSQL is ready!"
             return 0
@@ -60,7 +82,11 @@ cd /app
 if ! alembic upgrade head; then
     log "ERROR: Database migration failed!"
     log "Please check your database connection and try again."
-    log "Connection string: ${LETTA_PG_URI%:*}:****@${LETTA_PG_URI##*@}"
+    if [ -n "$LETTA_PG_HOST" ] && [ -n "$LETTA_PG_PORT" ] && [ -n "$LETTA_PG_USER" ] && [ -n "$LETTA_PG_DB" ]; then
+        log "Connection: $LETTA_PG_USER@$LETTA_PG_HOST:$LETTA_PG_PORT/$LETTA_PG_DB"
+    elif [ -n "$LETTA_PG_URI" ]; then
+        log "Connection string: ${LETTA_PG_URI%:*}:****@${LETTA_PG_URI##*@}"
+    fi
     exit 1
 fi
 log "Database migration completed successfully."
