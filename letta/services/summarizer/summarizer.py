@@ -85,7 +85,8 @@ class Summarizer:
             )
             return all_in_context_messages, False
 
-        retain_count = 0 if clear else self.message_buffer_min
+        # Always retain at least 2 messages for context continuity, even when clearing
+        retain_count = 2 if clear else self.message_buffer_min
 
         if not force:
             logger.info(f"Buffer length hit {self.message_buffer_limit}, evicting until we retain only {retain_count} messages.")
