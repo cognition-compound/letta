@@ -333,13 +333,27 @@ class Message(BaseMessage):
                     otid = Message.generate_otid_from_id(self.id, len(messages))
                     # If we're supporting using assistant message,
                     # then we want to treat certain function calls as a special case
-                    if use_assistant_message and tool_call.function.name == assistant_message_tool_name:
+                    # Handle both send_message and send with to="user"
+                    is_send_message = tool_call.function.name == assistant_message_tool_name
+                    is_send_to_user = False
+                    
+                    if tool_call.function.name == "send":
+                        try:
+                            func_args = parse_json(tool_call.function.arguments)
+                            if func_args.get("to") == "user":
+                                is_send_to_user = True
+                        except:
+                            pass
+                    
+                    if use_assistant_message and (is_send_message or is_send_to_user):
                         # We need to unpack the actual message contents from the function call
                         try:
                             func_args = parse_json(tool_call.function.arguments)
-                            message_string = func_args[assistant_message_tool_kwarg]
+                            # For send_message, use assistant_message_tool_kwarg; for send, use "message"
+                            message_key = assistant_message_tool_kwarg if is_send_message else "message"
+                            message_string = func_args[message_key]
                         except KeyError:
-                            raise ValueError(f"Function call {tool_call.function.name} missing {assistant_message_tool_kwarg} argument")
+                            raise ValueError(f"Function call {tool_call.function.name} missing {message_key} argument")
                         messages.append(
                             AssistantMessage(
                                 id=self.id,
