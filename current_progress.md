@@ -2,14 +2,19 @@
 
 ## 🚀 Recent Updates
 
-### ✅ Streaming Interface Enhancement (2025-02-03)
-**Enhanced streaming interfaces to recognize the unified `send` tool** - Both Anthropic and OpenAI streaming interfaces now correctly handle `send(to="user")` as equivalent to `send_message`.
+### ✅ PRODUCTION READY: Unified Send Function (2025-01-04)
+**Universal message routing with single `send()` function** - Consolidates all agent messaging (user, agent-to-agent, group, broadcast) into one consistent interface.
 
-**Key Changes:**
-- Updated `anthropic_streaming_interface.py` to detect `send` tool with `to="user"` parameter
-- Updated `openai_streaming_interface.py` with same detection logic
-- Correctly extracts `message` parameter from `send` tool (vs `DEFAULT_MESSAGE_TOOL_KWARG` for `send_message`)
-- Maintains full backwards compatibility with existing `send_message` tool
+**Implementation Journey:**
+1. **Created unified function** in `multi_agent.py` with routing: `send(message, to="user|agent:<id>|group:<id>|broadcast:<tag>", wait_for_reply=bool)`
+2. **Registered in system** - Added to `MULTI_AGENT_TOOLS` constants and `multi_agent_tool_executor.py` function_map
+3. **Fixed streaming** - Updated both Anthropic and OpenAI interfaces to recognize `send(to="user")` as equivalent to `send_message`
+4. **Fixed persistence** - Modified `schemas/message.py:to_letta_messages()` to convert `send` tool calls to AssistantMessages
+5. **Discovered message flow** - Interface display → Tool execution → LLM response → DB persistence → API conversion
+
+**Benefits:** Single API to learn, explicit routing, backwards compatible, consistent behavior
+
+**Documentation:** Complete implementation details in `docs/UNIFIED_SEND_IMPLEMENTATION.md`
 
 ## 🎯 Current Focus: Multimodal & File Systems
 
