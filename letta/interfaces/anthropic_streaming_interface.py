@@ -288,10 +288,16 @@ class AnthropicStreamingInterface:
                                     yield tool_call_msg
                                     self.tool_call_buffer = []
 
-                            # Start detecting special case of "send_message"
-                            if self.tool_call_name == DEFAULT_MESSAGE_TOOL and self.use_assistant_message:
-                                previous_send_message = self.previous_parse.get(DEFAULT_MESSAGE_TOOL_KWARG, "")
-                                current_send_message = current_parsed.get(DEFAULT_MESSAGE_TOOL_KWARG, "")
+                            # Start detecting special case of "send_message" or "send" with to="user"
+                            is_send_to_user = (
+                                self.tool_call_name == DEFAULT_MESSAGE_TOOL or 
+                                (self.tool_call_name == "send" and current_parsed.get("to") == "user")
+                            )
+                            if is_send_to_user and self.use_assistant_message:
+                                # For 'send' tool, the parameter is 'message', for 'send_message' it's DEFAULT_MESSAGE_TOOL_KWARG
+                                message_kwarg = "message" if self.tool_call_name == "send" else DEFAULT_MESSAGE_TOOL_KWARG
+                                previous_send_message = self.previous_parse.get(message_kwarg, "")
+                                current_send_message = current_parsed.get(message_kwarg, "")
                                 send_message_diff = current_send_message[len(previous_send_message) :]
 
                                 # Only stream out if it's not an empty string

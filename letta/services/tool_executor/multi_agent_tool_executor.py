@@ -124,7 +124,9 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
     async def send(self, agent_state: AgentState, message: str, to: str, wait_for_reply: bool = False) -> str:
         """Universal message sending function with explicit routing."""
         if to == "user":
-            # Route to send_message (user) - just return confirmation since actual sending is handled elsewhere
+            # For user messages, just return the success message
+            # The actual message delivery is handled by the streaming interfaces
+            # which look for the tool name and extract the message parameter
             return "Message sent to user"
         
         elif to.startswith("agent:"):

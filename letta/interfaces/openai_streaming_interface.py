@@ -182,7 +182,12 @@ class OpenAIStreamingInterface:
                                     if self.function_name_buffer:
 
                                         # use_assisitant_message means that we should also not release main_json raw, and instead should only release the contents of "message": "..."
-                                        if self.use_assistant_message and self.function_name_buffer == self.assistant_message_tool_name:
+                                        # Check if it's send_message or send with to="user"
+                                        is_send_to_user = (
+                                            self.function_name_buffer == self.assistant_message_tool_name or
+                                            (self.function_name_buffer == "send" and self.optimistic_json_parser.parse(self.current_function_arguments).get("to") == "user")
+                                        )
+                                        if self.use_assistant_message and is_send_to_user:
 
                                             # Store the ID of the tool call so allow skipping the corresponding response
                                             if self.function_id_buffer:
@@ -226,17 +231,27 @@ class OpenAIStreamingInterface:
                                     else:
 
                                         # use_assisitant_message means that we should also not release main_json raw, and instead should only release the contents of "message": "..."
-                                        if self.use_assistant_message and (
-                                            self.last_flushed_function_name is not None
-                                            and self.last_flushed_function_name == self.assistant_message_tool_name
-                                        ):
+                                        # Check if it's send_message or send with to="user"
+                                        is_send_to_user = (
+                                            self.last_flushed_function_name is not None and (
+                                                self.last_flushed_function_name == self.assistant_message_tool_name or
+                                                (self.last_flushed_function_name == "send" and self.optimistic_json_parser.parse(self.current_function_arguments).get("to") == "user")
+                                            )
+                                        )
+                                        if self.use_assistant_message and is_send_to_user:
                                             # do an additional parse on the updates_main_json
                                             if self.function_args_buffer:
                                                 updates_main_json = self.function_args_buffer + updates_main_json
                                                 self.function_args_buffer = None
 
                                                 # Pretty gross hardcoding that assumes that if we're toggling into the keywords, we have the full prefix
-                                                match_str = '{"' + self.assistant_message_tool_kwarg + '":"'
+                                                # Determine which parameter to use based on the function name
+                                                parsed_args_temp = self.optimistic_json_parser.parse(self.current_function_arguments)
+                                                message_kwarg = (
+                                                    "message" if self.last_flushed_function_name == "send" and parsed_args_temp.get("to") == "user"
+                                                    else self.assistant_message_tool_kwarg
+                                                )
+                                                match_str = '{"' + message_kwarg + '":"'
                                                 if updates_main_json == match_str:
                                                     updates_main_json = None
 
@@ -281,11 +296,17 @@ class OpenAIStreamingInterface:
                                                 # TODO: THIS IS TOTALLY WRONG AND BAD, BUT SAVING FOR A LARGER REWRITE IN THE NEAR FUTURE
                                                 parsed_args = self.optimistic_json_parser.parse(self.current_function_arguments)
 
-                                                if parsed_args.get(self.assistant_message_tool_kwarg) and parsed_args.get(
-                                                    self.assistant_message_tool_kwarg
-                                                ) != self.current_json_parse_result.get(self.assistant_message_tool_kwarg):
-                                                    new_content = parsed_args.get(self.assistant_message_tool_kwarg)
-                                                    prev_content = self.current_json_parse_result.get(self.assistant_message_tool_kwarg, "")
+                                                # Determine which parameter to use based on the function name
+                                                message_kwarg = (
+                                                    "message" if self.last_flushed_function_name == "send" and parsed_args.get("to") == "user"
+                                                    else self.assistant_message_tool_kwarg
+                                                )
+
+                                                if parsed_args.get(message_kwarg) and parsed_args.get(
+                                                    message_kwarg
+                                                ) != self.current_json_parse_result.get(message_kwarg):
+                                                    new_content = parsed_args.get(message_kwarg)
+                                                    prev_content = self.current_json_parse_result.get(message_kwarg, "")
                                                     # TODO: Assumes consistent state and that prev_content is subset of new_content
                                                     diff = new_content.replace(prev_content, "", 1)
                                                     self.current_json_parse_result = parsed_args

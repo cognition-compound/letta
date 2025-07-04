@@ -1,5 +1,16 @@
 # Letta Development Progress Summary
 
+## 🚀 Recent Updates
+
+### ✅ Streaming Interface Enhancement (2025-02-03)
+**Enhanced streaming interfaces to recognize the unified `send` tool** - Both Anthropic and OpenAI streaming interfaces now correctly handle `send(to="user")` as equivalent to `send_message`.
+
+**Key Changes:**
+- Updated `anthropic_streaming_interface.py` to detect `send` tool with `to="user"` parameter
+- Updated `openai_streaming_interface.py` with same detection logic
+- Correctly extracts `message` parameter from `send` tool (vs `DEFAULT_MESSAGE_TOOL_KWARG` for `send_message`)
+- Maintains full backwards compatibility with existing `send_message` tool
+
 ## 🎯 Current Focus: Multimodal & File Systems
 
 ### ✅ PRODUCTION READY: Multimodal Messages (2025-01-06) 
