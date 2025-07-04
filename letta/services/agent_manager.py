@@ -18,9 +18,8 @@ from letta.constants import (
     BASE_VOICE_SLEEPTIME_CHAT_TOOLS,
     BASE_VOICE_SLEEPTIME_TOOLS,
     DEFAULT_TIMEZONE,
-    DEPRECATED_BASE_TOOLS,
+    DEPRECATED_LETTA_TOOLS,
     FILES_TOOLS,
-    MULTI_AGENT_TOOLS,
 )
 from letta.helpers import ToolRulesSolver
 from letta.helpers.datetime_helpers import get_utc_time
@@ -81,6 +80,7 @@ from letta.services.helpers.agent_manager_helper import (
     build_passage_query,
     build_source_passage_query,
     calculate_base_tools,
+    calculate_multi_agent_tools,
     check_supports_structured_output,
     compile_system_message,
     derive_system_message,
@@ -283,7 +283,7 @@ class AgentManager:
             else:
                 tool_names |= calculate_base_tools(is_v2=False)
         if agent_create.include_multi_agent_tools:
-            tool_names |= set(MULTI_AGENT_TOOLS)
+            tool_names |= calculate_multi_agent_tools()
 
         supplied_ids = set(agent_create.tool_ids or [])
 
@@ -306,7 +306,7 @@ class AgentManager:
                 tool_rules = list(agent_create.tool_rules or [])
                 if agent_create.include_base_tool_rules:
                     for tn in tool_names:
-                        if tn in {"send_message", "memory_finish_edits"}:
+                        if tn in {"send_message", "send_message_to_agent_async", "memory_finish_edits"}:
                             tool_rules.append(TerminalToolRule(tool_name=tn))
                         elif tn in (BASE_TOOLS + BASE_MEMORY_TOOLS + BASE_SLEEPTIME_TOOLS):
                             tool_rules.append(ContinueToolRule(tool_name=tn))
@@ -495,10 +495,10 @@ class AgentManager:
             else:
                 tool_names |= calculate_base_tools(is_v2=False)
         if agent_create.include_multi_agent_tools:
-            tool_names |= set(MULTI_AGENT_TOOLS)
+            tool_names |= calculate_multi_agent_tools()
 
         # take out the deprecated tool names
-        tool_names.difference_update(set(DEPRECATED_BASE_TOOLS))
+        tool_names.difference_update(set(DEPRECATED_LETTA_TOOLS))
 
         supplied_ids = set(agent_create.tool_ids or [])
 
@@ -536,7 +536,7 @@ class AgentManager:
                 tool_rules = list(agent_create.tool_rules or [])
                 if agent_create.include_base_tool_rules:
                     for tn in tool_names:
-                        if tn in {"send_message", "memory_finish_edits"}:
+                        if tn in {"send_message", "send_message_to_agent_async", "memory_finish_edits"}:
                             tool_rules.append(TerminalToolRule(tool_name=tn))
                         elif tn in (BASE_TOOLS + BASE_MEMORY_TOOLS + BASE_MEMORY_TOOLS_V2 + BASE_SLEEPTIME_TOOLS):
                             tool_rules.append(ContinueToolRule(tool_name=tn))
@@ -1221,6 +1221,7 @@ class AgentManager:
         include_relationships: Optional[List[str]] = None,
     ) -> PydanticAgentState:
         """Fetch an agent by its ID."""
+
         async with db_registry.async_session() as session:
             agent = await AgentModel.read_async(db_session=session, identifier=agent_id, actor=actor)
             return await agent.to_pydantic_async(include_relationships=include_relationships)
@@ -1584,7 +1585,7 @@ class AgentManager:
 
         # note: we only update the system prompt if the core memory is changed
         # this means that the archival/recall memory statistics may be someout out of date
-        curr_memory_str = agent_state.memory.compile()
+        curr_memory_str = agent_state.memory.compile(sources=agent_state.sources)
         if curr_memory_str in curr_system_message_openai["content"] and not force:
             # NOTE: could this cause issues if a block is removed? (substring match would still work)
             logger.debug(
@@ -1611,6 +1612,7 @@ class AgentManager:
             timezone=agent_state.timezone,
             previous_message_count=num_messages - len(agent_state.message_ids),
             archival_memory_size=num_archival_memories,
+            sources=agent_state.sources,
         )
 
         diff = united_diff(curr_system_message_openai["content"], new_system_message_str)
@@ -1643,7 +1645,8 @@ class AgentManager:
 
         Updates to the memory header should *not* trigger a rebuild, since that will simply flood recall storage with excess messages
         """
-        agent_state = await self.get_agent_by_id_async(agent_id=agent_id, include_relationships=["memory"], actor=actor)
+        # Get the current agent state
+        agent_state = await self.get_agent_by_id_async(agent_id=agent_id, include_relationships=["memory", "sources"], actor=actor)
         if not tool_rules_solver:
             tool_rules_solver = ToolRulesSolver(agent_state.tool_rules)
 
@@ -1659,7 +1662,9 @@ class AgentManager:
 
         # note: we only update the system prompt if the core memory is changed
         # this means that the archival/recall memory statistics may be someout out of date
-        curr_memory_str = agent_state.memory.compile()
+        curr_memory_str = agent_state.memory.compile(
+            sources=agent_state.sources, tool_usage_rules=tool_rules_solver.compile_tool_rule_prompts()
+        )
         if curr_memory_str in curr_system_message_openai["content"] and not force:
             # NOTE: could this cause issues if a block is removed? (substring match would still work)
             logger.debug(
@@ -1679,6 +1684,7 @@ class AgentManager:
         num_archival_memories = await self.passage_manager.agent_passage_size_async(actor=actor, agent_id=agent_id)
 
         # update memory (TODO: potentially update recall/archival stats separately)
+
         new_system_message_str = compile_system_message(
             system_prompt=agent_state.system,
             in_context_memory=agent_state.memory,
@@ -1687,6 +1693,7 @@ class AgentManager:
             previous_message_count=num_messages - len(agent_state.message_ids),
             archival_memory_size=num_archival_memories,
             tool_rules_solver=tool_rules_solver,
+            sources=agent_state.sources,
         )
 
         diff = united_diff(curr_system_message_openai["content"], new_system_message_str)
@@ -1804,7 +1811,7 @@ class AgentManager:
             # Update agent to only keep the system message
             agent.message_ids = [system_message_id]
             await agent.update_async(db_session=session, actor=actor)
-            agent_state = await agent.to_pydantic_async()
+            agent_state = await agent.to_pydantic_async(include_relationships=["sources"])
 
         # Optionally add default initial messages after the system message
         if add_default_initial_messages:
@@ -1838,9 +1845,13 @@ class AgentManager:
         Returns:
             modified (bool): whether the memory was updated
         """
-        agent_state = await self.get_agent_by_id_async(agent_id=agent_id, actor=actor)
+        agent_state = await self.get_agent_by_id_async(agent_id=agent_id, actor=actor, include_relationships=["memory", "sources"])
         system_message = await self.message_manager.get_message_by_id_async(message_id=agent_state.message_ids[0], actor=actor)
-        if new_memory.compile() not in system_message.content[0].text:
+        temp_tool_rules_solver = ToolRulesSolver(agent_state.tool_rules)
+        if (
+            new_memory.compile(sources=agent_state.sources, tool_usage_rules=temp_tool_rules_solver.compile_tool_rule_prompts())
+            not in system_message.content[0].text
+        ):
             # update the blocks (LRW) in the DB
             for label in agent_state.memory.list_block_labels():
                 updated_value = new_memory.get_block(label).value
@@ -1880,7 +1891,9 @@ class AgentManager:
             agent_state.memory.blocks = [b for b in blocks if b is not None]
 
         if file_block_names:
-            file_blocks = await self.file_agent_manager.get_all_file_blocks_by_name(file_names=file_block_names, actor=actor)
+            file_blocks = await self.file_agent_manager.get_all_file_blocks_by_name(
+                file_names=file_block_names, agent_id=agent_state.id, actor=actor
+            )
             agent_state.memory.file_blocks = [b for b in file_blocks if b is not None]
 
         return agent_state
@@ -1922,8 +1935,7 @@ class AgentManager:
                 relationship_name="sources",
                 model_class=SourceModel,
                 item_ids=[source_id],
-                allow_partial=False,
-                replace=False,  # Extend existing sources rather than replace
+                replace=False,
             )
 
             # Commit the changes

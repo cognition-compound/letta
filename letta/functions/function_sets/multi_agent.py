@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING, List
 
@@ -152,6 +153,9 @@ def send_message_to_agent_async(self: "Agent", message: str, other_agent_id: str
     Returns:
         str: A confirmation message indicating the message was successfully sent.
     """
+    if os.getenv("LETTA_ENVIRONMENT") == "PRODUCTION":
+        raise RuntimeError("This tool is not allowed to be run on Letta Cloud.")
+
     # Create clean messages with sender context in system message
     messages = [
         MessageCreate(

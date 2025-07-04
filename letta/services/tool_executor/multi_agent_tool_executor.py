@@ -1,6 +1,8 @@
 import asyncio
+import os
 from typing import Any, Dict, List, Optional
 
+from letta.log import get_logger
 from letta.schemas.agent import AgentState
 from letta.schemas.enums import MessageRole
 from letta.schemas.letta_message import AssistantMessage
@@ -11,6 +13,8 @@ from letta.schemas.tool import Tool
 from letta.schemas.tool_execution_result import ToolExecutionResult
 from letta.schemas.user import User
 from letta.services.tool_executor.tool_executor_base import ToolExecutor
+
+logger = get_logger(__name__)
 
 
 class LettaMultiAgentToolExecutor(ToolExecutor):
@@ -29,6 +33,7 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
         assert agent_state is not None, "Agent state is required for multi-agent tools"
         function_map = {
             "send_message_to_agent_and_wait_for_reply": self.send_message_to_agent_and_wait_for_reply,
+            "send_message_to_agent_async": self.send_message_to_agent_async,
             "send_message_to_agents_matching_tags": self.send_message_to_agents_matching_tags_async,
             "send_message_to_agent_async": self.send_message_to_agent_async,
             "send": self.send,
@@ -110,16 +115,22 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
 
     async def send_message_to_agent_async(self, agent_state: AgentState, message: str, other_agent_id: str) -> str:
         """Send message to agent without waiting for response."""
-        augmented_message = (
+        if os.getenv("LETTA_ENVIRONMENT") == "PRODUCTION":
+            raise RuntimeError("This tool is not allowed to be run on Letta Cloud.")
+
+        # Build the prefixed system message
+        prefixed = (
             f"[Incoming message from agent with ID '{agent_state.id}' - "
-            f"this is a one-way notification, no response is expected] "
+            f"to reply to this message, make sure to use the "
+            f"'send_message_to_agent_async' tool, or the agent will not receive your message] "
             f"{message}"
         )
-        
-        # Fire and forget - create task to process asynchronously
-        asyncio.create_task(self._process_agent(agent_id=other_agent_id, message=augmented_message))
-        
-        return "Message sent successfully"
+
+        task = asyncio.create_task(self._process_agent(agent_id=other_agent_id, message=prefixed))
+
+        task.add_done_callback(lambda t: (logger.error(f"Async send_message task failed: {t.exception()}") if t.exception() else None))
+
+        return "Successfully sent message"
 
     async def send(self, agent_state: AgentState, message: str, to: str, wait_for_reply: bool = False) -> str:
         """Universal message sending function with explicit routing."""
