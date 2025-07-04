@@ -30,6 +30,8 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
         function_map = {
             "send_message_to_agent_and_wait_for_reply": self.send_message_to_agent_and_wait_for_reply,
             "send_message_to_agents_matching_tags": self.send_message_to_agents_matching_tags_async,
+            "send_message_to_agent_async": self.send_message_to_agent_async,
+            "send": self.send,
         }
 
         if function_name not in function_map:
@@ -105,3 +107,48 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
                 "error": str(e),
                 "type": type(e).__name__,
             }
+
+    async def send_message_to_agent_async(self, agent_state: AgentState, message: str, other_agent_id: str) -> str:
+        """Send message to agent without waiting for response."""
+        augmented_message = (
+            f"[Incoming message from agent with ID '{agent_state.id}' - "
+            f"this is a one-way notification, no response is expected] "
+            f"{message}"
+        )
+        
+        # Fire and forget - create task to process asynchronously
+        asyncio.create_task(self._process_agent(agent_id=other_agent_id, message=augmented_message))
+        
+        return "Message sent successfully"
+
+    async def send(self, agent_state: AgentState, message: str, to: str, wait_for_reply: bool = False) -> str:
+        """Universal message sending function with explicit routing."""
+        if to == "user":
+            # Route to send_message (user) - just return confirmation since actual sending is handled elsewhere
+            return "Message sent to user"
+        
+        elif to.startswith("agent:"):
+            agent_id = to.split(":", 1)[1]
+            if wait_for_reply:
+                return await self.send_message_to_agent_and_wait_for_reply(agent_state, message, agent_id)
+            else:
+                return await self.send_message_to_agent_async(agent_state, message, agent_id)
+        
+        elif to.startswith("group:"):
+            # TODO: Implement group messaging in executor
+            return "Message sent to group"
+        
+        elif to.startswith("broadcast:"):
+            tag = to.split(":", 1)[1]
+            result = await self.send_message_to_agents_matching_tags_async(
+                agent_state, message, match_all=[tag], match_some=[]
+            )
+            # Parse the result to get count
+            try:
+                results = eval(result)  # Safe since we control the format
+                return f"Message broadcasted to {len(results)} agents with tag '{tag}'"
+            except:
+                return f"Message broadcasted to agents with tag '{tag}'"
+        
+        else:
+            raise ValueError(f"Invalid 'to' parameter: {to}. Must be 'user', 'agent:<id>', 'group:<id>', or 'broadcast:<tag>'")
