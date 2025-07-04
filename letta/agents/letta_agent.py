@@ -1145,23 +1145,6 @@ class LettaAgent(BaseAgent):
 
                 stop_reason = None  # reset – we’re still going
 
-        # Default continuation behavior: if no explicit rule determined the continuation,
-        # and we're not at a hard stop, default to continuing after tool execution
-        if not tool_rule_violated and not is_final_step and tool_rules_solver:
-            # Check if any explicit tool rule was applied
-            explicit_rule_applied = any(
-                [
-                    tool_rules_solver.is_terminal_tool(tool_call_name),
-                    tool_rules_solver.has_children_tools(tool_call_name),
-                    tool_rules_solver.is_continue_tool(tool_call_name),
-                ]
-            )
-
-            # If no explicit rule was applied and continue_stepping is still just the heartbeat value
-            if not explicit_rule_applied and continue_stepping == request_heartbeat and not request_heartbeat:
-                continue_stepping = True
-                heartbeat_reason = f"{NON_USER_MSG_PREFIX}Continuing after {tool_call_name} execution"
-
         return continue_stepping, heartbeat_reason, stop_reason
 
     @trace_method
