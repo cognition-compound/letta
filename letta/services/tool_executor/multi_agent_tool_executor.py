@@ -51,11 +51,7 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
         )
 
     async def send_message_to_agent_and_wait_for_reply(self, agent_state: AgentState, message: str, other_agent_id: str) -> str:
-        augmented_message = (
-            f"[Incoming message from agent with ID '{agent_state.id}' - to reply to this message, "
-            f"make sure to use the 'send_message' at the end, and the system will notify the sender of your response] "
-            f"{message}"
-        )
+        augmented_message = f"[Message from agent '{agent_state.id}'] {message}"
 
         return str(await self._process_agent(agent_id=other_agent_id, message=augmented_message))
 
@@ -69,12 +65,7 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
         if not matching_agents:
             return str([])
 
-        augmented_message = (
-            "[Incoming message from external Letta agent - to reply to this message, "
-            "make sure to use the 'send_message' at the end, and the system will notify "
-            "the sender of your response] "
-            f"{message}"
-        )
+        augmented_message = f"[Broadcast message from agent '{agent_state.id}'] {message}"
 
         tasks = [
             asyncio.create_task(self._process_agent(agent_id=agent_state.id, message=augmented_message)) for agent_state in matching_agents
@@ -117,12 +108,7 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
         """Send message to agent without waiting for response."""
 
         # Build the prefixed system message
-        prefixed = (
-            f"[Incoming message from agent with ID '{agent_state.id}' - "
-            f"to reply to this message, make sure to use the "
-            f"'send_message_to_agent_async' tool, or the agent will not receive your message] "
-            f"{message}"
-        )
+        prefixed = f"[Message from agent '{agent_state.id}'] {message}"
 
         task = asyncio.create_task(self._process_agent(agent_id=other_agent_id, message=prefixed))
 
@@ -137,29 +123,27 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
             # The actual message delivery is handled by the streaming interfaces
             # which look for the tool name and extract the message parameter
             return "Message sent to user"
-        
+
         elif to.startswith("agent:"):
             agent_id = to.split(":", 1)[1]
             if wait_for_reply:
                 return await self.send_message_to_agent_and_wait_for_reply(agent_state, message, agent_id)
             else:
                 return await self.send_message_to_agent_async(agent_state, message, agent_id)
-        
+
         elif to.startswith("group:"):
             # TODO: Implement group messaging in executor
             return "Message sent to group"
-        
+
         elif to.startswith("broadcast:"):
             tag = to.split(":", 1)[1]
-            result = await self.send_message_to_agents_matching_tags_async(
-                agent_state, message, match_all=[tag], match_some=[]
-            )
+            result = await self.send_message_to_agents_matching_tags_async(agent_state, message, match_all=[tag], match_some=[])
             # Parse the result to get count
             try:
                 results = eval(result)  # Safe since we control the format
                 return f"Message broadcasted to {len(results)} agents with tag '{tag}'"
             except:
                 return f"Message broadcasted to agents with tag '{tag}'"
-        
+
         else:
             raise ValueError(f"Invalid 'to' parameter: {to}. Must be 'user', 'agent:<id>', 'group:<id>', or 'broadcast:<tag>'")

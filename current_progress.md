@@ -2,6 +2,19 @@
 
 ## 🚀 Recent Updates
 
+### ✅ Simplified Agent Message Prefixes (2025-01-07)
+**Minimal prefixing for agent autonomy** - Removed instructional prefixes from inter-agent messages, allowing agents to decide response strategies.
+
+**Changes:**
+- Simplified all message prefixes to only include sender ID: `[Message from agent 'sender-id']`
+- Broadcast messages use: `[Broadcast message from agent 'sender-id']`
+- Removed instructions about using `send_message` or `send` tool
+- Agents now autonomously choose how to respond based on context and available tools
+
+**Benefits:** Reduced verbosity, increased agent autonomy, cleaner message flow
+
+**Documentation:** Updated in `docs/SEND_FUNCTION_DEEP_ANALYSIS.md`
+
 ### ✅ PRODUCTION READY: Unified Send Function (2025-01-04)
 **Universal message routing with single `send()` function** - Consolidates all agent messaging (user, agent-to-agent, group, broadcast) into one consistent interface.
 
