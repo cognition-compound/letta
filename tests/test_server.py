@@ -368,6 +368,8 @@ def event_loop(request):
     loop.close()
 
 
+@pytest.mark.integration
+@pytest.mark.database
 def test_error_on_nonexistent_agent(server, user, agent_id):
     try:
         fake_agent_id = str(uuid.uuid4())
@@ -381,6 +383,8 @@ def test_error_on_nonexistent_agent(server, user, agent_id):
 
 
 @pytest.mark.order(1)
+@pytest.mark.integration
+@pytest.mark.database
 def test_user_message_memory(server, user, agent_id):
     try:
         server.user_message(user_id=user.id, agent_id=agent_id, message="/memory")
@@ -395,6 +399,8 @@ def test_user_message_memory(server, user, agent_id):
 
 
 @pytest.mark.order(4)
+@pytest.mark.integration
+@pytest.mark.database
 def test_user_message(server, user, agent_id):
     # add data into recall memory
     response = server.user_message(user_id=user.id, agent_id=agent_id, message="What's up?")
@@ -405,6 +411,8 @@ def test_user_message(server, user, agent_id):
 
 
 @pytest.mark.order(5)
+@pytest.mark.integration
+@pytest.mark.database
 def test_get_recall_memory(server, org_id, user, agent_id):
     # test recall memory cursor pagination
     actor = user
@@ -477,6 +485,8 @@ def test_get_recall_memory(server, org_id, user, agent_id):
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.database
 async def test_get_context_window_overview(server: SyncServer, user, agent_id):
     """Test that the context window overview fetch works"""
     overview = await server.agent_manager.get_context_window(agent_id=agent_id, actor=user)
@@ -517,6 +527,8 @@ async def test_get_context_window_overview(server: SyncServer, user, agent_id):
     )
 
 
+@pytest.mark.integration
+@pytest.mark.database
 def test_delete_agent_same_org(server: SyncServer, org_id: str, user: User):
     agent_state = server.create_agent(
         request=CreateAgent(

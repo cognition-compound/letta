@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Annotated, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from letta.schemas.letta_message_content import (
     LettaAssistantMessageContentUnion,
@@ -187,11 +187,15 @@ class ToolCallMessage(LettaMessage):
             data["tool_call"] = {k: v for k, v in data["tool_call"].items() if v is not None}
         return data
 
-    class Config:
-        json_encoders = {
-            ToolCallDelta: lambda v: v.model_dump(exclude_none=True),
-            ToolCall: lambda v: v.model_dump(exclude_none=True),
-        }
+    model_config = ConfigDict(
+        # Use custom serializers instead of json_encoders
+    )
+
+    @field_serializer('tool_call')
+    def serialize_tool_call(self, tool_call: Optional[Union[ToolCall, ToolCallDelta]], _info):
+        if tool_call is None:
+            return None
+        return tool_call.model_dump(exclude_none=True)
 
     @field_validator("tool_call", mode="before")
     @classmethod

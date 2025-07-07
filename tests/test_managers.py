@@ -695,6 +695,8 @@ async def another_file(server, default_source, default_user, default_organizatio
 # AgentManager Tests - Basic
 # ======================================================================================================================
 @pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.database
 async def test_create_get_list_agent(server: SyncServer, comprehensive_test_agent_fixture, default_user, event_loop):
     # Test agent creation
     created_agent, create_agent_request = comprehensive_test_agent_fixture
@@ -720,6 +722,8 @@ async def test_create_get_list_agent(server: SyncServer, comprehensive_test_agen
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.database
 async def test_create_agent_include_base_tools(server: SyncServer, default_user, event_loop):
     """Test agent creation with include_default_source=True"""
     # Upsert base tools
@@ -748,6 +752,7 @@ async def test_create_agent_include_base_tools(server: SyncServer, default_user,
     assert sorted(tool_names) == sorted(expected_tools)
 
 
+@pytest.mark.unit
 def test_calculate_multi_agent_tools(set_letta_environment):
     """Test that calculate_multi_agent_tools excludes local-only tools in production."""
     result = calculate_multi_agent_tools()
@@ -773,6 +778,8 @@ def test_calculate_multi_agent_tools(set_letta_environment):
         assert "send_message_to_agent_async" in result, "Local-only tools should be in non-production"
 
 
+@pytest.mark.integration
+@pytest.mark.database
 async def test_upsert_base_tools_excludes_local_only_in_production(server: SyncServer, default_user, set_letta_environment, event_loop):
     """Test that upsert_base_tools excludes local-only multi-agent tools in production."""
     # Upsert all base tools
@@ -794,6 +801,8 @@ async def test_upsert_base_tools_excludes_local_only_in_production(server: SyncS
             assert tool in tool_names, f"Multi-agent tool '{tool}' should be upserted in non-production"
 
 
+@pytest.mark.integration
+@pytest.mark.database
 async def test_upsert_multi_agent_tools_only(server: SyncServer, default_user, set_letta_environment, event_loop):
     """Test that upserting only multi-agent tools respects production filtering."""
     from letta.orm.enums import ToolType
@@ -814,6 +823,8 @@ async def test_upsert_multi_agent_tools_only(server: SyncServer, default_user, s
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.database
 async def test_create_agent_with_default_source(server: SyncServer, default_user, print_tool, default_block, event_loop):
     """Test agent creation with include_default_source=True"""
     memory_blocks = [CreateBlock(label="human", value="TestUser"), CreateBlock(label="persona", value="I am a test assistant")]

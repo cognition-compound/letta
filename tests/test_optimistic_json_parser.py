@@ -18,6 +18,7 @@ def lenient_parser():
     return OptimisticJSONParser(strict=False)
 
 
+@pytest.mark.unit
 def test_parse_empty_input(strict_parser):
     """
     Test parsing an empty string. Should fall back to parsing "{}".
@@ -26,6 +27,7 @@ def test_parse_empty_input(strict_parser):
     assert result == {}, "Empty input should parse as an empty dict."
 
 
+@pytest.mark.unit
 def test_parse_valid_json(strict_parser):
     """
     Test parsing a valid JSON string using the standard json.loads logic.
@@ -35,6 +37,7 @@ def test_parse_valid_json(strict_parser):
     assert result == {"name": "John", "age": 30}, "Should parse valid JSON correctly."
 
 
+@pytest.mark.unit
 def test_parse_valid_json_array(strict_parser):
     """
     Test parsing a valid JSON array.
@@ -44,6 +47,7 @@ def test_parse_valid_json_array(strict_parser):
     assert result == [1, 2, 3, "four"], "Should parse valid JSON array correctly."
 
 
+@pytest.mark.unit
 def test_parse_partial_json_object(strict_parser):
     """
     Test parsing a JSON object with extra trailing characters.
@@ -58,6 +62,7 @@ def test_parse_partial_json_object(strict_parser):
     mock_callback.assert_called_once()
 
 
+@pytest.mark.unit
 def test_parse_partial_json_array(strict_parser):
     """
     Test parsing a JSON array with extra tokens.
@@ -68,6 +73,7 @@ def test_parse_partial_json_array(strict_parser):
     assert strict_parser.last_parse_reminding.strip() == "extra_tokens", "The leftover reminding should capture extra tokens."
 
 
+@pytest.mark.unit
 def test_parse_number_cases(strict_parser):
     """
     Test various number formats.
@@ -93,20 +99,24 @@ def test_parse_number_cases(strict_parser):
             assert parsed == expected, f"Number parsing failed for {num_str}"
 
 
+@pytest.mark.unit
 def test_parse_boolean_true(strict_parser):
     assert strict_parser.parse("true") is True, "Should parse 'true'."
     # Check leftover
     assert strict_parser.last_parse_reminding is None, "No extra tokens expected."
 
 
+@pytest.mark.unit
 def test_parse_boolean_false(strict_parser):
     assert strict_parser.parse("false") is False, "Should parse 'false'."
 
 
+@pytest.mark.unit
 def test_parse_null(strict_parser):
     assert strict_parser.parse("null") is None, "Should parse 'null'."
 
 
+@pytest.mark.unit
 @pytest.mark.parametrize("invalid_boolean", ["tru", "fa", "fal", "True", "False"])
 def test_parse_invalid_booleans(strict_parser, invalid_boolean):
     """
@@ -124,6 +134,7 @@ def test_parse_invalid_booleans(strict_parser, invalid_boolean):
         pass
 
 
+@pytest.mark.unit
 def test_parse_string_with_escapes(strict_parser):
     """
     Test a string containing escaped quotes.
@@ -133,6 +144,7 @@ def test_parse_string_with_escapes(strict_parser):
     assert result == 'This is a "test" string', "String with escaped quotes should parse correctly."
 
 
+@pytest.mark.unit
 def test_parse_incomplete_string_strict(strict_parser):
     """
     Test how a strict parser handles an incomplete string.
@@ -145,6 +157,7 @@ def test_parse_incomplete_string_strict(strict_parser):
         pass  # Strict mode might raise
 
 
+@pytest.mark.unit
 def test_parse_incomplete_string_lenient(lenient_parser):
     """
     In non-strict mode, incomplete strings may be returned as-is.
@@ -154,6 +167,7 @@ def test_parse_incomplete_string_lenient(lenient_parser):
     assert result == "Unfinished string with no end", "Lenient mode should return the incomplete string without quotes."
 
 
+@pytest.mark.unit
 def test_parse_incomplete_number_strict(strict_parser):
     """
     Test how a strict parser handles an incomplete number, like '-' or '.'.
@@ -165,6 +179,7 @@ def test_parse_incomplete_number_strict(strict_parser):
         strict_parser.parse(input_str)
 
 
+@pytest.mark.unit
 def test_object_with_missing_colon(strict_parser):
     """
     Test parsing an object missing a colon. Should raise or partially parse.
@@ -177,6 +192,7 @@ def test_object_with_missing_colon(strict_parser):
         pass
 
 
+@pytest.mark.unit
 def test_object_with_missing_value(strict_parser):
     """
     Test parsing an object with a key but no value before a comma or brace.
@@ -188,6 +204,7 @@ def test_object_with_missing_value(strict_parser):
     assert result == {"key": None}, "Key without value should map to None."
 
 
+@pytest.mark.unit
 def test_array_with_trailing_comma(strict_parser):
     """
     Test array that might have a trailing comma before closing.
@@ -199,6 +216,7 @@ def test_array_with_trailing_comma(strict_parser):
     assert result == [1, 2, 3], "Trailing comma should be handled or partially parsed."
 
 
+@pytest.mark.unit
 def test_callback_invocation(strict_parser, capsys):
     """
     Verify that on_extra_token callback is invoked and prints expected content.
@@ -209,6 +227,7 @@ def test_callback_invocation(strict_parser, capsys):
     assert "Parsed JSON with extra tokens:" in captured, "Callback default_on_extra_token should print a message."
 
 
+@pytest.mark.unit
 def test_unknown_token(strict_parser):
     """
     Test parser behavior when encountering an unknown first character.
@@ -219,6 +238,7 @@ def test_unknown_token(strict_parser):
         strict_parser.parse(input_str)
 
 
+@pytest.mark.unit
 def test_array_nested_objects(lenient_parser):
     """
     Test parsing a complex structure with nested arrays/objects.
@@ -230,6 +250,7 @@ def test_array_nested_objects(lenient_parser):
     assert lenient_parser.last_parse_reminding.strip() == "leftover"
 
 
+@pytest.mark.unit
 def test_multiple_parse_calls(strict_parser):
     """
     Test calling parse() multiple times to ensure leftover is reset properly.
@@ -248,6 +269,7 @@ def test_multiple_parse_calls(strict_parser):
     assert strict_parser.last_parse_reminding.strip() == "trailing2"
 
 
+@pytest.mark.unit
 def test_parse_incomplete_string_streaming_strict(strict_parser):
     """
     Test how a strict parser handles an incomplete string received in chunks.
@@ -270,6 +292,7 @@ def test_parse_incomplete_string_streaming_strict(strict_parser):
     assert result == expected, "Should parse complete JSON correctly"
 
 
+@pytest.mark.unit
 def test_unescaped_control_characters_strict(strict_parser):
     """
     Test parsing JSON containing unescaped control characters in strict mode.

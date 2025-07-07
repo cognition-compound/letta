@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 from typing_extensions import Self
 
 from letta.constants import CORE_MEMORY_BLOCK_CHAR_LIMIT, DEFAULT_HUMAN_BLOCK_DESCRIPTION, DEFAULT_PERSONA_BLOCK_DESCRIPTION
@@ -36,8 +36,7 @@ class BaseBlock(LettaBase, validate_assignment=True):
     # def __len__(self):
     #     return len(self.value)
 
-    class Config:
-        extra = "ignore"  # Ignores extra fields
+    model_config = ConfigDict(extra="ignore")  # Ignores extra fields
 
     @model_validator(mode="after")
     def verify_char_limit(self) -> Self:
@@ -105,8 +104,7 @@ class BlockUpdate(BaseBlock):
     limit: Optional[int] = Field(None, description="Character limit of the block.")
     value: Optional[str] = Field(None, description="Value of the block.")
 
-    class Config:
-        extra = "ignore"  # Ignores extra fields
+    model_config = ConfigDict(extra="ignore")  # Ignores extra fields
 
 
 class CreateBlock(BaseBlock):

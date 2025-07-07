@@ -9,6 +9,7 @@ def sample_memory():
     return ChatMemory(persona="Chat Agent", human="User")
 
 
+@pytest.mark.unit
 def test_create_chat_memory():
     """Test creating an instance of ChatMemory"""
     chat_memory = ChatMemory(persona="Chat Agent", human="User")
@@ -16,6 +17,7 @@ def test_create_chat_memory():
     assert chat_memory.get_block("human").value == "User"
 
 
+@pytest.mark.unit
 def test_memory_limit_validation(sample_memory: Memory):
     """Test exceeding memory limit"""
     with pytest.raises(ValueError):
@@ -25,6 +27,7 @@ def test_memory_limit_validation(sample_memory: Memory):
         sample_memory.get_block("persona").value = "x " * 10000
 
 
+@pytest.mark.unit
 def test_memory_jinja2_set_template(sample_memory: Memory):
     """Test setting the template for the memory"""
 

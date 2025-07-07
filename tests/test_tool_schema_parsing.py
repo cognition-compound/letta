@@ -86,6 +86,7 @@ def _run_schema_test(schema_name: str, desired_function_name: str, expect_struct
     return (schema_name, True)  # Return success status
 
 
+@pytest.mark.unit
 def test_derive_openai_json_schema():
     """Test that the schema generator works across a variety of example source code inputs."""
 
@@ -194,6 +195,9 @@ def _openai_payload(test_config):
     return (filename, model, structured_output, success, error_message)
 
 
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.openai_basic
 @pytest.mark.parametrize("openai_model", ["gpt-4o"])
 @pytest.mark.parametrize("structured_output", [True, False])
 def test_valid_schemas_via_openai(openai_model: str, structured_output: bool):
@@ -279,6 +283,9 @@ def _run_composio_test(action_name, openai_model, structured_output):
 
 @pytest.mark.parametrize("openai_model", ["gpt-4o-mini"])
 @pytest.mark.parametrize("structured_output", [True])
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.openai_basic
 def test_composio_tool_schema_generation(openai_model: str, structured_output: bool):
     """Test that we can generate the schemas for some Composio tools."""
 
@@ -315,6 +322,9 @@ def test_composio_tool_schema_generation(openai_model: str, structured_output: b
 
 @pytest.mark.parametrize("openai_model", ["gpt-4o-mini"])
 @pytest.mark.parametrize("structured_output", [True])
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.openai_basic
 def test_langchain_tool_schema_generation(openai_model: str, structured_output: bool):
     """Test that we can generate the schemas for some Langchain tools."""
     from langchain_community.tools import WikipediaQueryRun
@@ -442,6 +452,9 @@ def _run_pydantic_args_test(filename, openai_model, structured_output):
 
 @pytest.mark.parametrize("openai_model", ["gpt-4o"])
 @pytest.mark.parametrize("structured_output", [True, False])
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.openai_basic
 def test_valid_schemas_with_pydantic_args_schema(openai_model: str, structured_output: bool):
     """Test that we can send the schemas to OpenAI and get a tool call back."""
 
@@ -581,5 +594,6 @@ def missing_param_doc(x: int, y: int) -> str:
         (missing_param_doc, "parameter 'y' not documented"),
     ],
 )
+@pytest.mark.unit
 def test_google_style_docstring_validation(fn, regex):
     _check(fn, regex)

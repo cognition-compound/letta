@@ -115,6 +115,8 @@ def clear_tables():
 # --------------------------------------------------------------------------------------------------------------------
 
 
+@pytest.mark.integration
+@pytest.mark.database
 def test_add_and_manage_tags_for_agent(client: Letta):
     """
     Comprehensive happy path test for adding, retrieving, and managing tags on an agent.
@@ -157,6 +159,8 @@ def test_add_and_manage_tags_for_agent(client: Letta):
     client.agents.delete(agent.id)
 
 
+@pytest.mark.integration
+@pytest.mark.database
 def test_agent_tags(client: Letta):
     """Test creating agents with tags and retrieving tags via the API."""
 
@@ -218,6 +222,8 @@ def test_agent_tags(client: Letta):
 # --------------------------------------------------------------------------------------------------------------------
 # Agent memory blocks
 # --------------------------------------------------------------------------------------------------------------------
+@pytest.mark.integration
+@pytest.mark.database
 def test_shared_blocks(disable_e2b_api_key, client: Letta):
     # create a block
     block = client.blocks.create(label="human", value="username: sarah")
@@ -249,6 +255,8 @@ def test_shared_blocks(disable_e2b_api_key, client: Letta):
     client.agents.delete(agent_state2.id)
 
 
+@pytest.mark.integration
+@pytest.mark.database
 def test_update_agent_memory_label(client: Letta):
     """Test that we can update the label of a block in an agent's memory"""
 
@@ -269,6 +277,8 @@ def test_update_agent_memory_label(client: Letta):
         client.agents.delete(agent.id)
 
 
+@pytest.mark.integration
+@pytest.mark.database
 def test_attach_detach_agent_memory_block(client: Letta, agent: AgentState):
     """Test that we can add and remove a block from an agent's memory"""
 
@@ -297,6 +307,8 @@ def test_attach_detach_agent_memory_block(client: Letta, agent: AgentState):
     assert example_new_label not in [block.label for block in client.agents.blocks.list(agent_id=updated_agent.id)]
 
 
+@pytest.mark.integration
+@pytest.mark.database
 def test_update_agent_memory_limit(client: Letta):
     """Test that we can update the limit of a block in an agent's memory"""
 

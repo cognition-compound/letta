@@ -13,6 +13,9 @@ from letta.schemas.providers import (
 from letta.settings import model_settings
 
 
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.openai_basic
 def test_openai():
     provider = OpenAIProvider(
         name="openai",
@@ -29,6 +32,9 @@ def test_openai():
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.openai_basic
 async def test_openai_async():
     provider = OpenAIProvider(
         name="openai",
@@ -44,6 +50,8 @@ async def test_openai_async():
     assert embedding_models[0].handle == f"{provider.name}/{embedding_models[0].embedding_model}"
 
 
+@pytest.mark.integration
+@pytest.mark.external_api
 def test_deepseek():
     provider = DeepSeekProvider(name="deepseek", api_key=model_settings.deepseek_api_key)
     models = provider.list_llm_models()
@@ -51,6 +59,9 @@ def test_deepseek():
     assert models[0].handle == f"{provider.name}/{models[0].model}"
 
 
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.anthropic_basic
 def test_anthropic():
     provider = AnthropicProvider(
         name="anthropic",
@@ -62,6 +73,9 @@ def test_anthropic():
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.anthropic_basic
 async def test_anthropic_async():
     provider = AnthropicProvider(
         name="anthropic",
@@ -72,6 +86,8 @@ async def test_anthropic_async():
     assert models[0].handle == f"{provider.name}/{models[0].model}"
 
 
+@pytest.mark.integration
+@pytest.mark.external_api
 def test_groq():
     provider = GroqProvider(
         name="groq",
@@ -82,6 +98,9 @@ def test_groq():
     assert models[0].handle == f"{provider.name}/{models[0].model}"
 
 
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.azure_basic
 def test_azure():
     provider = AzureProvider(
         name="azure",
@@ -114,6 +133,9 @@ def test_azure():
 #     assert embedding_models[0].handle == f"{provider.name}/{embedding_models[0].embedding_model}"
 
 
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.gemini_basic
 def test_googleai():
     api_key = model_settings.gemini_api_key
     assert api_key is not None
@@ -131,6 +153,9 @@ def test_googleai():
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.gemini_basic
 async def test_googleai_async():
     api_key = model_settings.gemini_api_key
     assert api_key is not None
@@ -147,6 +172,8 @@ async def test_googleai_async():
     assert embedding_models[0].handle == f"{provider.name}/{embedding_models[0].embedding_model}"
 
 
+@pytest.mark.integration
+@pytest.mark.external_api
 def test_google_vertex():
     provider = GoogleVertexProvider(
         name="google_vertex",
@@ -162,6 +189,8 @@ def test_google_vertex():
     assert embedding_models[0].handle == f"{provider.name}/{embedding_models[0].embedding_model}"
 
 
+@pytest.mark.integration
+@pytest.mark.external_api
 def test_together():
     provider = TogetherProvider(
         name="together",
@@ -182,6 +211,8 @@ def test_together():
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.external_api
 async def test_together_async():
     provider = TogetherProvider(
         name="together",
@@ -215,6 +246,9 @@ async def test_together_async():
 #     assert embedding_models[0].handle == f"{provider.name}/{embedding_models[0].embedding_model}"
 
 
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.anthropic_basic
 def test_custom_anthropic():
     provider = AnthropicProvider(
         name="custom_anthropic",

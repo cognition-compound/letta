@@ -110,6 +110,22 @@ Visit the [Alembic documentation](https://alembic.sqlalchemy.org/en/latest/tutor
 
 Before we hit the 'Wow, I'm Done' button, let's make sure everything works as expected. Run tests and make sure the existing ones don't throw a fit. And if needed, create new tests. 🕵️
 
+### Setting up API keys for testing
+
+Many tests require API keys for various LLM providers and services. To set these up:
+
+1. Copy the example environment file:
+   ```shell
+   cp .env.example .env
+   ```
+
+2. Edit `.env` and add your API keys. At minimum, you'll need:
+   ```shell
+   OPENAI_API_KEY=sk-...  # Required for most tests
+   ```
+
+3. For comprehensive testing, see `.env.example` for all available API keys and `docs/TESTING_API_KEYS.md` for detailed documentation on obtaining them.
+
 ### Run existing tests
 
 Running tests if you installed via poetry:
@@ -120,6 +136,15 @@ poetry run pytest -s tests
 Running tests if you installed via pip:
 ```
 pytest -s tests
+```
+
+To run tests without certain API keys:
+```
+# Skip provider-specific tests
+poetry run pytest -s tests -m "not anthropic_basic and not gemini_basic"
+
+# Skip sandbox tests requiring E2B
+poetry run pytest -s tests -m "not e2b_sandbox"
 ```
 
 ### Creating new tests

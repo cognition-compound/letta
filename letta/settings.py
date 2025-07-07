@@ -188,7 +188,7 @@ if "--use-file-pg-uri" in sys.argv:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="letta_", extra="ignore")
 
-    letta_dir: Optional[Path] = Field(Path.home() / ".letta", env="LETTA_DIR")
+    letta_dir: Optional[Path] = Field(Path.home() / ".letta", validation_alias="LETTA_DIR")
     debug: Optional[bool] = False
     cors_origins: Optional[list] = cors_origins
 
@@ -303,7 +303,7 @@ class Settings(BaseSettings):
 class TestSettings(Settings):
     model_config = SettingsConfigDict(env_prefix="letta_test_", extra="ignore")
 
-    letta_dir: Optional[Path] = Field(Path.home() / ".letta/test", env="LETTA_TEST_DIR")
+    letta_dir: Optional[Path] = Field(Path.home() / ".letta/test", validation_alias="LETTA_TEST_DIR")
 
 
 class LogSettings(BaseSettings):

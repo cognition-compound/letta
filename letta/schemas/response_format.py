@@ -19,7 +19,7 @@ class ResponseFormat(BaseModel):
         ...,
         description="The type of the response format.",
         # why use this?
-        example=ResponseFormatType.text,
+        json_schema_extra={"example": ResponseFormatType.text},
     )
 
 

@@ -38,6 +38,7 @@ def messages():
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_static_buffer_summarization_no_trim_needed(mock_summarizer_agent, messages):
     summarizer = Summarizer(SummarizationMode.STATIC_MESSAGE_BUFFER, mock_summarizer_agent, message_buffer_limit=20)
     updated_messages, updated = summarizer._static_buffer_summarization(messages[:5], [])
@@ -47,6 +48,7 @@ async def test_static_buffer_summarization_no_trim_needed(mock_summarizer_agent,
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_static_buffer_summarization_trim_needed(mock_summarizer_agent, messages):
     summarizer = Summarizer(
         SummarizationMode.STATIC_MESSAGE_BUFFER,
@@ -62,6 +64,7 @@ async def test_static_buffer_summarization_trim_needed(mock_summarizer_agent, me
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_static_buffer_summarization_trim_user_message(mock_summarizer_agent, messages):
     summarizer = Summarizer(
         SummarizationMode.STATIC_MESSAGE_BUFFER,
@@ -81,6 +84,7 @@ async def test_static_buffer_summarization_trim_user_message(mock_summarizer_age
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_static_buffer_summarization_no_trim_no_summarization(mock_summarizer_agent, messages):
     summarizer = Summarizer(SummarizationMode.STATIC_MESSAGE_BUFFER, mock_summarizer_agent, message_buffer_limit=15)
     updated_messages, updated = summarizer._static_buffer_summarization(messages[:8], [])
@@ -91,6 +95,7 @@ async def test_static_buffer_summarization_no_trim_no_summarization(mock_summari
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_static_buffer_summarization_json_parsing_failure(mock_summarizer_agent, messages):
     summarizer = Summarizer(
         SummarizationMode.STATIC_MESSAGE_BUFFER,
@@ -110,6 +115,7 @@ async def test_static_buffer_summarization_json_parsing_failure(mock_summarizer_
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_static_buffer_summarization_all_user_messages_trimmed(mock_summarizer_agent, messages):
     summarizer = Summarizer(
         SummarizationMode.STATIC_MESSAGE_BUFFER,
@@ -130,6 +136,7 @@ async def test_static_buffer_summarization_all_user_messages_trimmed(mock_summar
 
 
 @pytest.mark.asyncio
+@pytest.mark.unit
 async def test_static_buffer_summarization_no_assistant_messages_trimmed(mock_summarizer_agent, messages):
     summarizer = Summarizer(
         SummarizationMode.STATIC_MESSAGE_BUFFER,

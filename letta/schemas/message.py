@@ -508,12 +508,38 @@ class Message(BaseMessage):
         assert "role" in openai_message_dict, openai_message_dict
         assert "content" in openai_message_dict, openai_message_dict
 
-        # TODO(caren) implicit support for only non-parts/list content types
-        if openai_message_dict["content"] is not None and type(openai_message_dict["content"]) is not str:
+        # Handle different content types (string vs list for multimodal)
+        content: List[LettaMessageContentUnion] = []
+        
+        if openai_message_dict["content"] is None:
+            # Empty content
+            pass
+        elif isinstance(openai_message_dict["content"], str):
+            # Simple string content
+            content.append(TextContent(text=openai_message_dict["content"]))
+        elif isinstance(openai_message_dict["content"], list):
+            # Multimodal content (list of content parts)
+            for part in openai_message_dict["content"]:
+                if isinstance(part, dict):
+                    part_type = part.get("type")
+                    if part_type == "text":
+                        # Text content part
+                        content.append(TextContent(text=part.get("text", "")))
+                    elif part_type == "image_url":
+                        # Image content part
+                        image_data = part.get("image_url", {})
+                        if isinstance(image_data, str):
+                            # Simple string URL format
+                            content.append(ImageContent(image_url=image_data))
+                        elif isinstance(image_data, dict):
+                            # Dict format with url and optional detail
+                            content.append(ImageContent(
+                                image_url=image_data.get("url", ""),
+                                detail=image_data.get("detail", "auto")
+                            ))
+                    # Skip unknown content types
+        else:
             raise ValueError(f"Invalid content type: {type(openai_message_dict['content'])}")
-        content: List[LettaMessageContentUnion] = (
-            [TextContent(text=openai_message_dict["content"])] if openai_message_dict["content"] else []
-        )
 
         # TODO(caren) bad assumption here that "reasoning_content" always comes before "redacted_reasoning_content"
         if "reasoning_content" in openai_message_dict and openai_message_dict["reasoning_content"]:
@@ -718,18 +744,61 @@ class Message(BaseMessage):
             }
 
         elif self.role == "user":
-            assert all([v is not None for v in [text_content, self.role]]), vars(self)
-            openai_message = {
-                "content": text_content,
-                "role": self.role,
-            }
+            # Check if we have multimodal content
+            if self.content and (len(self.content) > 1 or (len(self.content) == 1 and isinstance(self.content[0], ImageContent))):
+                # Multimodal content - return as array
+                content_parts = []
+                for content in self.content:
+                    if isinstance(content, TextContent):
+                        content_parts.append({"type": "text", "text": content.text})
+                    elif isinstance(content, ImageContent):
+                        content_parts.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": content.image_url,
+                                "detail": content.detail
+                            }
+                        })
+                openai_message = {
+                    "content": content_parts,
+                    "role": self.role,
+                }
+            else:
+                # Text-only content - return as string
+                assert all([v is not None for v in [text_content, self.role]]), vars(self)
+                openai_message = {
+                    "content": text_content,
+                    "role": self.role,
+                }
 
         elif self.role == "assistant":
-            assert self.tool_calls is not None or text_content is not None
-            openai_message = {
-                "content": None if (put_inner_thoughts_in_kwargs and self.tool_calls is not None) else text_content,
-                "role": self.role,
-            }
+            assert self.tool_calls is not None or text_content is not None or self.content is not None
+            
+            # Check if we have multimodal content
+            if self.content and (len(self.content) > 1 or (len(self.content) == 1 and isinstance(self.content[0], ImageContent))):
+                # Multimodal content - return as array
+                content_parts = []
+                for content in self.content:
+                    if isinstance(content, TextContent):
+                        content_parts.append({"type": "text", "text": content.text})
+                    elif isinstance(content, ImageContent):
+                        content_parts.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": content.image_url,
+                                "detail": content.detail
+                            }
+                        })
+                openai_message = {
+                    "content": content_parts,
+                    "role": self.role,
+                }
+            else:
+                # Text-only or tool calls
+                openai_message = {
+                    "content": None if (put_inner_thoughts_in_kwargs and self.tool_calls is not None) else text_content,
+                    "role": self.role,
+                }
 
             if self.tool_calls is not None:
                 if put_inner_thoughts_in_kwargs:
@@ -955,14 +1024,62 @@ class Message(BaseMessage):
                 if isinstance(content, TextContent):
                     content_parts.append({"text": content.text})
                 elif isinstance(content, ImageContent):
-                    content_parts.append(
-                        {
-                            "inline_data": {
-                                "data": content.source.data,
-                                "mime_type": content.source.media_type,
+                    # Import the image source types
+                    from letta.schemas.letta_message_content import Base64Image, LettaImage, UrlImage
+                    
+                    if isinstance(content.source, Base64Image):
+                        # Base64 encoded image - use inline_data
+                        content_parts.append(
+                            {
+                                "inline_data": {
+                                    "data": content.source.data,
+                                    "mime_type": content.source.media_type,
+                                }
                             }
-                        }
-                    )
+                        )
+                    elif isinstance(content.source, LettaImage):
+                        # Letta image with optional data
+                        if content.source.data and content.source.media_type:
+                            content_parts.append(
+                                {
+                                    "inline_data": {
+                                        "data": content.source.data,
+                                        "mime_type": content.source.media_type,
+                                    }
+                                }
+                            )
+                        else:
+                            # No data available, use placeholder
+                            content_parts.append({"text": f"[Image: letta://file/{content.source.file_id}]"})
+                    elif isinstance(content.source, UrlImage):
+                        # URL image - need to fetch or use placeholder
+                        url = content.source.url
+                        if url.startswith(("http://", "https://")):
+                            # Try to fetch and convert to base64
+                            import base64
+                            import urllib.request
+                            from urllib.error import URLError
+                            
+                            try:
+                                with urllib.request.urlopen(url, timeout=5) as response:
+                                    image_data = response.read()
+                                    base64_data = base64.b64encode(image_data).decode('utf-8')
+                                    # Determine MIME type from response headers or URL
+                                    content_type = response.headers.get('Content-Type', 'image/jpeg')
+                                    content_parts.append(
+                                        {
+                                            "inline_data": {
+                                                "data": base64_data,
+                                                "mime_type": content_type,
+                                            }
+                                        }
+                                    )
+                            except (URLError, Exception) as e:
+                                # Failed to fetch, use text placeholder
+                                content_parts.append({"text": f"[Failed to load image from {url}]"})
+                        else:
+                            # Unknown scheme, use text placeholder
+                            content_parts.append({"text": f"[Image: {url}]"})
                 else:
                     raise ValueError(f"Unsupported content type: {content.type}")
 

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import Field
@@ -24,8 +24,8 @@ class User(UserBase):
     id: str = UserBase.generate_id_field()
     organization_id: Optional[str] = Field(DEFAULT_ORG_ID, description="The organization id of the user")
     name: str = Field(..., description="The name of the user.")
-    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow, description="The creation date of the user.")
-    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow, description="The update date of the user.")
+    created_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc), description="The creation date of the user.")
+    updated_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc), description="The update date of the user.")
     is_deleted: bool = Field(False, description="Whether this user is deleted or not.")
 
 

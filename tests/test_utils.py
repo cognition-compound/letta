@@ -39,6 +39,7 @@ def my_function_duplicate():
 """
 
 
+@pytest.mark.unit
 def test_get_function_annotations_found():
     """
     Test that we correctly parse annotations for a function
@@ -55,6 +56,7 @@ def test_get_function_annotations_found():
     }
 
 
+@pytest.mark.unit
 def test_get_function_annotations_not_found():
     """
     If the requested function name doesn't exist exactly,
@@ -64,6 +66,7 @@ def test_get_function_annotations_not_found():
         get_function_annotations_from_source(example_source_code, "missing_function")
 
 
+@pytest.mark.unit
 def test_get_function_annotations_no_args():
     """
     Check that a function without arguments returns an empty annotations dict.
@@ -72,6 +75,7 @@ def test_get_function_annotations_no_args():
     assert annotations == {}
 
 
+@pytest.mark.unit
 def test_get_function_annotations_with_default_values():
     """
     Ensure that a function with default arguments still captures the annotations.
@@ -80,6 +84,7 @@ def test_get_function_annotations_with_default_values():
     assert annotations == {"x": "int", "y": "str"}
 
 
+@pytest.mark.unit
 def test_get_function_annotations_partial_name_collision():
     """
     Ensure we only match the exact function name, not partial collisions.
@@ -93,6 +98,7 @@ def test_get_function_annotations_partial_name_collision():
 # --------------------- coerce_dict_args_by_annotations TESTS --------------------- #
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_success():
     """
     Basic success scenario with standard types:
@@ -109,6 +115,7 @@ def test_coerce_dict_args_success():
     assert coerced_args["e"] == {"key": "value"}
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_invalid_type():
     """
     If the value cannot be coerced into the annotation,
@@ -121,6 +128,7 @@ def test_coerce_dict_args_invalid_type():
         coerce_dict_args_by_annotations(function_args, annotations)
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_no_annotations():
     """
     If there are no annotations, we do no coercion.
@@ -131,6 +139,7 @@ def test_coerce_dict_args_no_annotations():
     assert coerced_args == function_args  # Exactly the same dict back
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_partial_annotations():
     """
     Only coerce annotated arguments; leave unannotated ones unchanged.
@@ -142,6 +151,7 @@ def test_coerce_dict_args_partial_annotations():
     assert coerced_args["b"] == "no_annotation"
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_with_missing_args():
     """
     If function_args lacks some keys listed in annotations,
@@ -154,6 +164,7 @@ def test_coerce_dict_args_with_missing_args():
     assert "b" not in coerced_args
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_unexpected_keys():
     """
     If function_args has extra keys not in annotations,
@@ -166,6 +177,7 @@ def test_coerce_dict_args_unexpected_keys():
     assert coerced_args["z"] == 999  # unchanged
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_unsupported_custom_class():
     """
     If someone tries to pass an annotation that isn't supported (like a custom class),
@@ -178,6 +190,7 @@ def test_coerce_dict_args_unsupported_custom_class():
         coerce_dict_args_by_annotations(function_args, annotations)
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_with_complex_types():
     """
     Confirm the ability to parse built-in complex data (lists, dicts, etc.)
@@ -194,6 +207,7 @@ def test_coerce_dict_args_with_complex_types():
     }
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_non_string_keys():
     """
     Validate behavior if `function_args` includes non-string keys.
@@ -208,6 +222,7 @@ def test_coerce_dict_args_non_string_keys():
     assert coerced_args[123] == "42"
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_non_parseable_list_or_dict():
     """
     Test passing incorrectly formatted JSON for a 'list' or 'dict' annotation.
@@ -219,6 +234,7 @@ def test_coerce_dict_args_non_parseable_list_or_dict():
         coerce_dict_args_by_annotations(function_args, annotations)
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_with_complex_list_annotation():
     """
     Test coercion when list with type annotation (e.g., list[int]) is used.
@@ -230,6 +246,7 @@ def test_coerce_dict_args_with_complex_list_annotation():
     assert coerced_args["a"] == [1, 2, 3]
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_with_complex_dict_annotation():
     """
     Test coercion when dict with type annotation (e.g., dict[str, int]) is used.
@@ -241,6 +258,7 @@ def test_coerce_dict_args_with_complex_dict_annotation():
     assert coerced_args["a"] == {"x": 1, "y": 2}
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_unsupported_complex_annotation():
     """
     If an unsupported complex annotation is used (e.g., a custom class),
@@ -255,6 +273,7 @@ def test_coerce_dict_args_unsupported_complex_annotation():
         coerce_dict_args_by_annotations(function_args, annotations)
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_with_nested_complex_annotation():
     """
     Test coercion with complex nested types like list[dict[str, int]].
@@ -266,6 +285,7 @@ def test_coerce_dict_args_with_nested_complex_annotation():
     assert coerced_args["a"] == [{"x": 1}, {"y": 2}]
 
 
+@pytest.mark.unit
 def test_coerce_dict_args_with_default_arguments():
     """
     Test coercion with default arguments, where some arguments have defaults in the source code.
@@ -280,6 +300,7 @@ def test_coerce_dict_args_with_default_arguments():
     assert coerced_args["b"] == "hello"
 
 
+@pytest.mark.unit
 def test_valid_filename():
     filename = "valid_filename.txt"
     sanitized = sanitize_filename(filename, add_uuid_suffix=True)
@@ -287,6 +308,7 @@ def test_valid_filename():
     assert sanitized.endswith(".txt")
 
 
+@pytest.mark.unit
 def test_filename_with_special_characters():
     filename = "invalid:/<>?*ƒfilename.txt"
     sanitized = sanitize_filename(filename, add_uuid_suffix=True)
@@ -294,6 +316,7 @@ def test_filename_with_special_characters():
     assert sanitized.endswith(".txt")
 
 
+@pytest.mark.unit
 def test_null_byte_in_filename():
     filename = "valid\0filename.txt"
     sanitized = sanitize_filename(filename, add_uuid_suffix=True)
@@ -302,6 +325,7 @@ def test_null_byte_in_filename():
     assert sanitized.endswith(".txt")
 
 
+@pytest.mark.unit
 def test_path_traversal_characters():
     filename = "../../etc/passwd"
     sanitized = sanitize_filename(filename, add_uuid_suffix=True)
@@ -309,21 +333,25 @@ def test_path_traversal_characters():
     assert len(sanitized) <= MAX_FILENAME_LENGTH
 
 
+@pytest.mark.unit
 def test_empty_filename():
     sanitized = sanitize_filename("", add_uuid_suffix=True)
     assert sanitized.startswith("_")
 
 
+@pytest.mark.unit
 def test_dot_as_filename():
     with pytest.raises(ValueError, match="Invalid filename"):
         sanitize_filename(".")
 
 
+@pytest.mark.unit
 def test_dotdot_as_filename():
     with pytest.raises(ValueError, match="Invalid filename"):
         sanitize_filename("..")
 
 
+@pytest.mark.unit
 def test_long_filename():
     filename = "a" * (MAX_FILENAME_LENGTH + 10) + ".txt"
     sanitized = sanitize_filename(filename, add_uuid_suffix=True)
@@ -331,6 +359,7 @@ def test_long_filename():
     assert sanitized.endswith(".txt")
 
 
+@pytest.mark.unit
 def test_unique_filenames():
     filename = "duplicate.txt"
     sanitized1 = sanitize_filename(filename, add_uuid_suffix=True)
@@ -342,6 +371,7 @@ def test_unique_filenames():
     assert sanitized2.endswith(".txt")
 
 
+@pytest.mark.unit
 def test_basic_sanitization_no_suffix():
     """Test the new behavior - basic sanitization without UUID suffix"""
     filename = "test_file.txt"
@@ -354,6 +384,7 @@ def test_basic_sanitization_no_suffix():
     assert sanitized_chars == "file.txt"
 
 
+@pytest.mark.unit
 def test_formatter():
 
     # Example system prompt that has no vars

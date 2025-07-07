@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -45,8 +45,8 @@ class FileMetadata(FileMetadataBase):
     chunks_embedded: Optional[int] = Field(default=None, description="Number of chunks that have been embedded.")
 
     # orm metadata, optional fields
-    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow, description="The creation date of the file.")
-    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow, description="The update date of the file.")
+    created_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc), description="The creation date of the file.")
+    updated_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc), description="The update date of the file.")
     is_deleted: bool = Field(False, description="Whether this file is deleted or not.")
 
     # This is optional, and only occasionally pulled in since it can be very large
@@ -92,16 +92,16 @@ class FileAgent(FileAgentBase):
         description="Portion of the file the agent is focused on (may be large).",
     )
     last_accessed_at: Optional[datetime] = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="UTC timestamp of the agent’s most recent access to this file.",
     )
 
     created_at: Optional[datetime] = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Row creation timestamp (UTC).",
     )
     updated_at: Optional[datetime] = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Row last-update timestamp (UTC).",
     )
     is_deleted: bool = Field(False, description="Soft-delete flag.")
