@@ -52,7 +52,7 @@ def setup_logging() -> None:
         return
 
     global _is_logging_initialized
-    
+
     # Prevent duplicate initialization
     if _is_logging_initialized:
         logger.debug("OpenTelemetry logging already initialized, skipping setup")
@@ -69,6 +69,7 @@ def setup_logging() -> None:
 
     # Use standard OTEL resource configuration
     from letta.otel.resource import get_resource
+
     resource = get_resource()
 
     # Create logger provider with resource

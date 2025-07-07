@@ -32,16 +32,8 @@ def send_message_to_agent_and_wait_for_reply(self: "Agent", message: str, other_
     """
     # Create clean messages with sender context in system message
     messages = [
-        MessageCreate(
-            role=MessageRole.system,
-            content=f"[Message from: Agent \"{self.agent_state.name}\" (ID: {self.agent_state.id})]"
-        ),
-        MessageCreate(
-            role=MessageRole.user,
-            content=message,
-            name=self.agent_state.name,
-            sender_id=self.agent_state.id
-        )
+        MessageCreate(role=MessageRole.system, content=f'[Message from: Agent "{self.agent_state.name}" (ID: {self.agent_state.id})]'),
+        MessageCreate(role=MessageRole.user, content=message, name=self.agent_state.name, sender_id=self.agent_state.id),
     ]
 
     return execute_send_message_to_agent(
@@ -80,16 +72,8 @@ def send_message_to_agents_matching_tags(self: "Agent", message: str, match_all:
 
         # Prepare clean messages with sender context
         messages = [
-            MessageCreate(
-                role=MessageRole.system,
-                content=f"[Message from: Agent \"{self.agent_state.name}\" (ID: {self.agent_state.id})]"
-            ),
-            MessageCreate(
-                role=MessageRole.user,
-                content=message,
-                name=self.agent_state.name,
-                sender_id=self.agent_state.id
-            )
+            MessageCreate(role=MessageRole.system, content=f'[Message from: Agent "{self.agent_state.name}" (ID: {self.agent_state.id})]'),
+            MessageCreate(role=MessageRole.user, content=message, name=self.agent_state.name, sender_id=self.agent_state.id),
         ]
 
         # Run .step() and return the response
@@ -158,16 +142,8 @@ def send_message_to_agent_async(self: "Agent", message: str, other_agent_id: str
 
     # Create clean messages with sender context in system message
     messages = [
-        MessageCreate(
-            role=MessageRole.system,
-            content=f"[Message from: Agent \"{self.agent_state.name}\" (ID: {self.agent_state.id})]"
-        ),
-        MessageCreate(
-            role=MessageRole.user,
-            content=message,
-            name=self.agent_state.name,
-            sender_id=self.agent_state.id
-        )
+        MessageCreate(role=MessageRole.system, content=f'[Message from: Agent "{self.agent_state.name}" (ID: {self.agent_state.id})]'),
+        MessageCreate(role=MessageRole.user, content=message, name=self.agent_state.name, sender_id=self.agent_state.id),
     ]
 
     # Use fire-and-forget to send without waiting
@@ -207,27 +183,28 @@ def send(self: "Agent", message: str, to: str, wait_for_reply: bool = False) -> 
     if to == "user":
         # Import here to avoid circular dependencies
         from letta.functions.function_sets.base import send_message
+
         send_message(self, message)
         return "Message sent to user"
-    
+
     elif to.startswith("agent:"):
         agent_id = to.split(":", 1)[1]
         if wait_for_reply:
             return send_message_to_agent_and_wait_for_reply(self, message, agent_id)
         else:
             return send_message_to_agent_async(self, message, agent_id)
-    
+
     elif to.startswith("group:"):
         group_id = to.split(":", 1)[1]
         # Note: send_message_to_all_agents_in_group doesn't use group_id parameter
         # It sends to all agents in the sender's group
         responses = send_message_to_all_agents_in_group(self, message)
         return f"Message sent to {len(responses)} agents in group"
-    
+
     elif to.startswith("broadcast:"):
         tag = to.split(":", 1)[1]
         responses = send_message_to_agents_matching_tags(self, message, match_all=[tag], match_some=[])
         return f"Message broadcasted to {len(responses)} agents with tag '{tag}'"
-    
+
     else:
         raise ValueError(f"Invalid 'to' parameter: {to}. Must be 'user', 'agent:<id>', 'group:<id>', or 'broadcast:<tag>'")

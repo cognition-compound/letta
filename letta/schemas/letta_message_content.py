@@ -76,14 +76,14 @@ class ImageContent(MessageContent):
     type: Literal[MessageContentType.image] = Field(default=MessageContentType.image, description="The type of the message.")
     source: ImageSourceUnion = Field(..., description="The source of the image.")
     _detail: Optional[str] = PrivateAttr(default=None)  # Store detail for URL images
-    
+
     def __init__(self, **data):
         """
         Initialize ImageContent with support for legacy API parameters.
-        
+
         This constructor handles backward compatibility for the old API format that used
         'image_url' and 'detail' parameters directly, converting them to the new 'source' format.
-        
+
         Args:
             **data: Keyword arguments that may include:
                 - source: ImageSourceUnion (new format)
@@ -92,12 +92,12 @@ class ImageContent(MessageContent):
         """
         # Extract detail for URL images before processing
         detail_for_url = None
-        
+
         # Handle legacy API with image_url and detail parameters
         if "image_url" in data and "source" not in data:
             image_url = data.pop("image_url")
             detail = data.pop("detail", None)
-            
+
             # Determine source type based on URL format
             if image_url.startswith("data:"):
                 # Parse data URL format: data:image/type;base64,data
@@ -109,36 +109,25 @@ class ImageContent(MessageContent):
                     media_type = "image/jpeg"  # default
                     if ":" in header and ";" in header:
                         media_type = header.split(":")[1].split(";")[0]
-                    
-                    data["source"] = Base64Image(
-                        type=ImageSourceType.base64,
-                        media_type=media_type,
-                        data=data_content,
-                        detail=detail
-                    )
+
+                    data["source"] = Base64Image(type=ImageSourceType.base64, media_type=media_type, data=data_content, detail=detail)
                 else:
                     # Invalid data URL format, treat as regular URL
-                    data["source"] = UrlImage(
-                        type=ImageSourceType.url,
-                        url=image_url
-                    )
+                    data["source"] = UrlImage(type=ImageSourceType.url, url=image_url)
                     # Store detail separately for URL images
                     detail_for_url = detail
             else:
                 # HTTP/HTTPS URL
-                data["source"] = UrlImage(
-                    type=ImageSourceType.url, 
-                    url=image_url
-                )
+                data["source"] = UrlImage(type=ImageSourceType.url, url=image_url)
                 # Store detail separately for URL images
                 detail_for_url = detail
-        
+
         super().__init__(**data)
-        
+
         # Set the private attribute after initialization
         if detail_for_url is not None:
             self._detail = detail_for_url
-    
+
     @property
     def image_url(self) -> str:
         """Get the image URL from the source."""
@@ -155,7 +144,7 @@ class ImageContent(MessageContent):
                 return f"letta://file/{self.source.file_id}"
         else:
             raise ValueError(f"Unknown image source type: {type(self.source)}")
-    
+
     @property
     def detail(self) -> Optional[str]:
         """Get the detail level from the source."""

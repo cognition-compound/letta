@@ -14,6 +14,7 @@ def _has_json_logger() -> bool:
     """Check if python-json-logger is available for structured logging"""
     try:
         import pythonjsonlogger.jsonlogger
+
         return True
     except ImportError:
         return False
@@ -32,6 +33,7 @@ def _setup_logfile() -> "Path":
     except PermissionError as e:
         # Fallback to a temporary location if we can't write to the configured directory
         import tempfile
+
         temp_dir = Path(tempfile.gettempdir()) / "letta_logs"
         temp_dir.mkdir(parents=True, exist_ok=True)
         fallback_logfile = temp_dir / "Letta.log"
@@ -53,6 +55,7 @@ def _setup_audit_logfile() -> "Path":
     except PermissionError as e:
         # Fallback to a temporary location if we can't write to the configured directory
         import tempfile
+
         temp_dir = Path(tempfile.gettempdir()) / "letta_logs"
         temp_dir.mkdir(parents=True, exist_ok=True)
         fallback_audit_logfile = temp_dir / "audit.log"
@@ -65,18 +68,16 @@ PRODUCTION_LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "standard": {
-            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        },
-        "json": {
-            "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
-            "format": "%(asctime)s %(name)s %(levelname)s %(message)s %(pathname)s %(lineno)d"
-        } if _has_json_logger() else {
-            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        },
-        "console": {
-            "format": "%(levelname)s: %(message)s"
-        }
+        "standard": {"format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"},
+        "json": (
+            {
+                "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
+                "format": "%(asctime)s %(name)s %(levelname)s %(message)s %(pathname)s %(lineno)d",
+            }
+            if _has_json_logger()
+            else {"format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"}
+        ),
+        "console": {"format": "%(levelname)s: %(message)s"},
     },
     "handlers": {
         "console": {
@@ -87,7 +88,7 @@ PRODUCTION_LOGGING = {
         },
         "file": {
             "level": "INFO",
-            "class": "logging.handlers.RotatingFileHandler", 
+            "class": "logging.handlers.RotatingFileHandler",
             "filename": _setup_logfile(),
             "maxBytes": 1024**2 * 100,  # 100MB files in production
             "backupCount": 30,  # Keep 30 days worth of logs (assuming ~1 file per day)
@@ -197,13 +198,16 @@ DEVELOPMENT_LOGGING = {
 # Thread-local storage for logging configuration state
 _thread_local = threading.local()
 
+
 def _is_logging_configured() -> bool:
     """Check if logging is configured for the current thread."""
-    return getattr(_thread_local, 'logging_configured', False)
+    return getattr(_thread_local, "logging_configured", False)
+
 
 def _set_logging_configured(value: bool) -> None:
     """Set logging configuration state for the current thread."""
     _thread_local.logging_configured = value
+
 
 def get_logger(name: Optional[str] = None) -> "logging.Logger":
     """returns the project logger, scoped to a child name if provided
@@ -214,15 +218,14 @@ def get_logger(name: Optional[str] = None) -> "logging.Logger":
     if not _is_logging_configured():
         # Use production logging config when debug=False, development config when debug=True
         config = DEVELOPMENT_LOGGING if settings.debug else PRODUCTION_LOGGING
-        
+
         try:
             dictConfig(config)
             _set_logging_configured(True)
         except ImportError as e:
             # Handle missing optional dependencies (e.g., pythonjsonlogger)
             logging.basicConfig(
-                level=logging.DEBUG if settings.debug else logging.INFO,
-                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                level=logging.DEBUG if settings.debug else logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
             )
             logging.getLogger(__name__).warning(f"Missing logging dependency, using basic config: {e}")
             _set_logging_configured(True)
@@ -231,27 +234,25 @@ def get_logger(name: Optional[str] = None) -> "logging.Logger":
             logging.basicConfig(
                 level=logging.DEBUG if settings.debug else logging.INFO,
                 format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-                stream=stdout  # Fall back to console only
+                stream=stdout,  # Fall back to console only
             )
             logging.getLogger(__name__).warning(f"Cannot write to log file, using console-only logging: {e}")
             _set_logging_configured(True)
         except (ValueError, TypeError) as e:
             # Handle configuration errors
             logging.basicConfig(
-                level=logging.DEBUG if settings.debug else logging.INFO,
-                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                level=logging.DEBUG if settings.debug else logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
             )
             logging.getLogger(__name__).warning(f"Invalid logging configuration, using basic config: {e}")
             _set_logging_configured(True)
         except Exception as e:
             # Generic fallback for any other configuration issues
             logging.basicConfig(
-                level=logging.DEBUG if settings.debug else logging.INFO,
-                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+                level=logging.DEBUG if settings.debug else logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
             )
             logging.getLogger(__name__).error(f"Unexpected error configuring logging, using basic config: {e}")
             _set_logging_configured(True)
-    
+
     parent_logger = logging.getLogger("Letta")
     if name:
         return parent_logger.getChild(name)
@@ -263,5 +264,5 @@ def get_audit_logger() -> "logging.Logger":
     # Ensure logging is configured
     if not _is_logging_configured():
         get_logger()  # This will configure logging
-    
+
     return logging.getLogger("Letta.audit")

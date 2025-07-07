@@ -35,7 +35,7 @@ def setup_auth_router(server: SyncServer, interface: QueuingInterface, password:
         client_ip = _get_client_ip(request)
         user_agent = request.headers.get("user-agent", "")
         request_id = getattr(request.state, "request_id", "unknown")
-        
+
         interface.clear()
 
         try:
@@ -49,7 +49,7 @@ def setup_auth_router(server: SyncServer, interface: QueuingInterface, password:
                 is_admin = True
                 response = server.authenticate_user()
                 credential_type = "admin_password"
-            
+
             # Log successful authentication
             logger.info(
                 f"Endpoint authentication successful",
@@ -63,11 +63,11 @@ def setup_auth_router(server: SyncServer, interface: QueuingInterface, password:
                     "auth_duration_ms": round((time.time() - start_time) * 1000, 2),
                     "is_admin": is_admin,
                     "endpoint": "/auth",
-                }
+                },
             )
-            
+
             return AuthResponse(uuid=response, is_admin=is_admin)
-            
+
         except Exception as e:
             # Log failed authentication attempt
             logger.warning(
@@ -81,10 +81,9 @@ def setup_auth_router(server: SyncServer, interface: QueuingInterface, password:
                     "endpoint": "/auth",
                     "error": str(e),
                     "error_type": type(e).__name__,
-                }
+                },
             )
             raise
-
 
     return router
 
@@ -95,13 +94,13 @@ def _get_client_ip(request: Request) -> str:
     forwarded_for = request.headers.get("x-forwarded-for")
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()
-        
+
     real_ip = request.headers.get("x-real-ip")
     if real_ip:
         return real_ip
-        
+
     # Fallback to direct client
     if request.client:
         return request.client.host
-        
+
     return "unknown"

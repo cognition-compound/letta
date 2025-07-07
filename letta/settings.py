@@ -178,6 +178,7 @@ if "--use-file-pg-uri" in sys.argv:
         with open(Path.home() / ".letta/pg_uri", "r") as f:
             default_pg_uri = f.read()
             from letta.log import get_logger
+
             logger = get_logger(__name__)
             logger.info(f"Read pg_uri from ~/.letta/pg_uri: {default_pg_uri}")
     except FileNotFoundError:
@@ -310,12 +311,12 @@ class TestSettings(Settings):
 class LogSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="letta_logging_", extra="ignore")
     verbose_telemetry_logging: bool = False
-    
+
     # HTTP Request/Response Logging Configuration
     log_request_bodies: bool = False
     log_response_bodies: bool = False
     max_body_log_size: int = 10240  # 10KB max body size to log
-    
+
     # Adaptive Log Sampling Configuration
     enable_log_sampling: bool = True
     sampling_strategy: str = "adaptive"  # "always", "never", "rate_based", "adaptive", "error_biased"
@@ -323,26 +324,26 @@ class LogSettings(BaseSettings):
     error_sample_rate: float = 1.0  # 100% for errors (always log)
     warning_sample_rate: float = 0.5  # 50% for warnings
     debug_sample_rate: float = 0.01  # 1% for debug messages
-    
+
     # Adaptive sampling parameters
     max_logs_per_second: int = 100  # Threshold to trigger adaptive reduction
     adaptive_window_seconds: int = 60  # Time window for rate calculations
     load_threshold: float = 0.8  # System load threshold
-    
+
     # Rate limits per log level (per second)
     max_debug_per_second: int = 10
     max_info_per_second: int = 50
     max_warning_per_second: int = 100
     # Errors are never rate limited
-    
+
     # Async Logging Configuration
     async_logging_enabled: bool = True  # Enable async logging for better performance
     async_logging_max_workers: int = 2  # Number of worker threads for async logging
     async_logging_queue_size: int = 1000  # Max queue size for async logging
     async_logging_batch_size: int = 10  # Batch size for processing log entries
     async_logging_flush_interval: float = 1.0  # Flush interval in seconds
-    
-    # Lazy Logging Configuration  
+
+    # Lazy Logging Configuration
     lazy_logging_enabled: bool = True  # Enable lazy evaluation for expensive operations
     lazy_logging_threshold_ms: float = 1.0  # Threshold for expensive operations in ms
 

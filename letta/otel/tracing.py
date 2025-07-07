@@ -153,6 +153,7 @@ def setup_tracing(
 
     # Use standard OTEL resource configuration
     from letta.otel.resource import get_resource
+
     resource = get_resource()
 
     # Create tracer provider
@@ -270,17 +271,17 @@ def log_attributes(attributes: Dict[str, Any]) -> None:
 
 def _safe_set_attribute(span, key: str, value: Any) -> None:
     """Safely set a span attribute, filtering out None values and ensuring valid types.
-    
+
     OpenTelemetry requires attributes to be strings, numbers, booleans, or sequences of these types.
     This function validates and converts values to prevent OTEL validation errors.
     """
     if value is None:
         return  # Skip None values entirely
-    
+
     # Convert to string if not a primitive type
     if not isinstance(value, (str, bool, int, float)):
         value = str(value)
-    
+
     # Only set if we have a valid, non-empty value
     if value != "" and value != "None":
         span.set_attribute(key, value)

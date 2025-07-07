@@ -32,6 +32,7 @@ class BaseToolRule(LettaBase):
             return template.render(**self.model_dump())
         except Exception as e:
             from letta.log import get_logger
+
             logger = get_logger(__name__)
             logger.warning(
                 f"Failed to render prompt template for tool rule '{self.tool_name}' (type: {self.type}). "

@@ -105,8 +105,6 @@ async def list_tools(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
-
 @router.post("/", response_model=Tool, operation_id="create_tool")
 async def create_tool(
     request: ToolCreate = Body(...),

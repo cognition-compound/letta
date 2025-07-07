@@ -61,6 +61,7 @@ from fastapi import FastAPI
 is_windows = platform.system() == "Windows"
 
 from letta.log import get_logger
+
 log = get_logger("uvicorn")
 
 
@@ -130,15 +131,15 @@ def _get_client_ip_for_error(request: Request) -> str:
     forwarded_for = request.headers.get("x-forwarded-for")
     if forwarded_for:
         return forwarded_for.split(",")[0].strip()
-        
+
     real_ip = request.headers.get("x-real-ip")
     if real_ip:
         return real_ip
-        
+
     # Fallback to direct client
     if request.client:
         return request.client.host
-        
+
     return "unknown"
 
 
@@ -221,7 +222,7 @@ def create_application() -> "FastAPI":
         request_id = getattr(request.state, "request_id", "unknown")
         user_id = getattr(request.state, "user_id", None)
         client_ip = _get_client_ip_for_error(request)
-        
+
         # Log the agent type error with context
         log.warning(
             f"Incompatible agent type error: {str(exc)} (req_id: {request_id})",
@@ -234,9 +235,9 @@ def create_application() -> "FastAPI":
                 "client_ip": client_ip,
                 "method": request.method,
                 "path": request.url.path,
-            }
+            },
         )
-        
+
         return JSONResponse(
             status_code=400,
             content={
@@ -250,7 +251,7 @@ def create_application() -> "FastAPI":
     @app.exception_handler(Exception)
     async def generic_error_handler(request: Request, exc: Exception):
         import traceback
-        
+
         # Extract request context for error logging
         request_id = getattr(request.state, "request_id", "unknown")
         user_id = getattr(request.state, "user_id", None)
@@ -259,7 +260,7 @@ def create_application() -> "FastAPI":
         user_agent = request.headers.get("user-agent", "")
         method = request.method
         url = str(request.url)
-        
+
         # Create structured error context
         error_context = {
             "error_type": type(exc).__name__,
@@ -275,28 +276,27 @@ def create_application() -> "FastAPI":
             "organization_id": str(organization_id) if organization_id else None,
             "stack_trace": traceback.format_exc(),
         }
-        
+
         # Log with full context
-        log.error(
-            f"Unhandled error: {str(exc)} (req_id: {request_id})",
-            extra=error_context,
-            exc_info=True
-        )
+        log.error(f"Unhandled error: {str(exc)} (req_id: {request_id})", extra=error_context, exc_info=True)
 
         if (os.getenv("SENTRY_DSN") is not None) and (os.getenv("SENTRY_DSN") != ""):
             import sentry_sdk
-            
+
             # Add context to Sentry
             with sentry_sdk.configure_scope() as scope:
                 scope.set_tag("request_id", request_id)
                 scope.set_user({"id": user_id, "organization_id": organization_id})
-                scope.set_context("request", {
-                    "method": method,
-                    "url": url,
-                    "client_ip": client_ip,
-                    "user_agent": user_agent,
-                })
-            
+                scope.set_context(
+                    "request",
+                    {
+                        "method": method,
+                        "url": url,
+                        "client_ip": client_ip,
+                        "user_agent": user_agent,
+                    },
+                )
+
             sentry_sdk.capture_exception(exc)
 
         return JSONResponse(
@@ -382,10 +382,10 @@ def create_application() -> "FastAPI":
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     # Add user context middleware (must be before logging middleware)
     app.add_middleware(UserContextMiddleware)
-    
+
     # Configure adaptive log sampling based on settings
     sampling_config = SamplingConfig(
         strategy=SamplingStrategy(log_settings.sampling_strategy),
@@ -400,7 +400,7 @@ def create_application() -> "FastAPI":
         max_info_per_second=log_settings.max_info_per_second,
         max_warning_per_second=log_settings.max_warning_per_second,
     )
-    
+
     # Add request logging middleware for comprehensive HTTP tracking
     app.add_middleware(
         RequestLoggingMiddleware,

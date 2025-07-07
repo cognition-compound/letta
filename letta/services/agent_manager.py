@@ -248,7 +248,7 @@ class AgentManager:
     @trace_method
     def create_agent(self, agent_create: CreateAgent, actor: PydanticUser, _test_only_force_id: Optional[str] = None) -> PydanticAgentState:
         start_time = time.time()
-        
+
         # validate required configs
         if not agent_create.llm_config or not agent_create.embedding_config:
             raise ValueError("llm_config and embedding_config are required")
@@ -399,10 +399,10 @@ class AgentManager:
         # Using the synchronous version since we don't have an async version yet
         # If you implement an async version of create_many_messages, you can switch to that
         self.message_manager.create_many_messages(pydantic_msgs=init_messages, actor=actor)
-        
+
         agent_state = new_agent.to_pydantic()
         creation_time_ms = round((time.time() - start_time) * 1000, 2)
-        
+
         # Log agent creation for lifecycle tracking
         logger.info(
             f"Agent created successfully: {agent_state.name}",
@@ -419,11 +419,12 @@ class AgentManager:
                 "num_tools": len(tool_names),
                 "num_blocks": len(block_ids),
                 "include_base_tools": agent_create.include_base_tools,
-            }
+            },
         )
-        
+
         # Audit log for security tracking with lazy evaluation
         if lazy_log_enabled(audit_logger, logging.INFO):
+
             def expensive_context():
                 return {
                     "event_type": "agent_lifecycle",
@@ -434,14 +435,9 @@ class AgentManager:
                     "organization_id": str(actor.organization_id) if actor.organization_id else None,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
-            
-            lazy_log_with_context(
-                audit_logger,
-                logging.INFO,
-                "Agent lifecycle event: creation",
-                expensive_context=expensive_context
-            )
-        
+
+            lazy_log_with_context(audit_logger, logging.INFO, "Agent lifecycle event: creation", expensive_context=expensive_context)
+
         return agent_state
 
     @trace_method
@@ -800,20 +796,30 @@ class AgentManager:
 
             agent_state = agent.to_pydantic()
             update_time_ms = round((time.time() - start_time) * 1000, 2)
-            
+
             # Collect update information for logging
             updates_made = []
-            if agent_update.name: updates_made.append("name")
-            if agent_update.description: updates_made.append("description")
-            if agent_update.system: updates_made.append("system")
-            if agent_update.llm_config: updates_made.append("llm_config")
-            if agent_update.embedding_config: updates_made.append("embedding_config")
-            if agent_update.tool_ids is not None: updates_made.append("tools")
-            if agent_update.source_ids is not None: updates_made.append("sources")
-            if agent_update.block_ids is not None: updates_made.append("blocks")
-            if agent_update.identity_ids is not None: updates_made.append("identities")
-            if agent_update.tags is not None: updates_made.append("tags")
-            
+            if agent_update.name:
+                updates_made.append("name")
+            if agent_update.description:
+                updates_made.append("description")
+            if agent_update.system:
+                updates_made.append("system")
+            if agent_update.llm_config:
+                updates_made.append("llm_config")
+            if agent_update.embedding_config:
+                updates_made.append("embedding_config")
+            if agent_update.tool_ids is not None:
+                updates_made.append("tools")
+            if agent_update.source_ids is not None:
+                updates_made.append("sources")
+            if agent_update.block_ids is not None:
+                updates_made.append("blocks")
+            if agent_update.identity_ids is not None:
+                updates_made.append("identities")
+            if agent_update.tags is not None:
+                updates_made.append("tags")
+
             # Log agent update for lifecycle tracking
             logger.info(
                 f"Agent updated successfully: {agent_state.name}",
@@ -828,9 +834,9 @@ class AgentManager:
                     "num_tools": len(new_tools) if agent_update.tool_ids is not None else None,
                     "num_sources": len(new_sources) if agent_update.source_ids is not None else None,
                     "num_blocks": len(new_blocks) if agent_update.block_ids is not None else None,
-                }
+                },
             )
-            
+
             # Audit log for security tracking
             audit_logger.info(
                 f"Agent lifecycle event: update",
@@ -843,7 +849,7 @@ class AgentManager:
                     "organization_id": str(actor.organization_id) if actor.organization_id else None,
                     "updates_made": updates_made,
                     "timestamp": datetime.now(timezone.utc).isoformat(),
-                }
+                },
             )
 
             return agent_state
@@ -1266,12 +1272,12 @@ class AgentManager:
             NoResultFound: If agent doesn't exist
         """
         start_time = time.time()
-        
+
         with db_registry.session() as session:
             # Retrieve the agent
             logger.debug(f"Hard deleting Agent with ID: {agent_id} with actor={actor}")
             agent = AgentModel.read(db_session=session, identifier=agent_id, actor=actor)
-            
+
             # Store agent info for logging before deletion
             agent_name = agent.name
             agent_type = str(agent.agent_type) if agent.agent_type else None
@@ -1304,7 +1310,7 @@ class AgentManager:
                 raise ValueError(f"Failed to hard delete Agent with ID {agent_id}: {e}")
             else:
                 deletion_time_ms = round((time.time() - start_time) * 1000, 2)
-                
+
                 # Log agent deletion for lifecycle tracking
                 logger.info(
                     f"Agent deleted successfully: {agent_name}",
@@ -1318,9 +1324,9 @@ class AgentManager:
                         "deletion_time_ms": deletion_time_ms,
                         "agents_deleted_count": len(agents_to_delete),
                         "group_deleted": sleeptime_group_to_delete is not None,
-                    }
+                    },
                 )
-                
+
                 # Audit log for security tracking
                 audit_logger.info(
                     f"Agent lifecycle event: deletion",
@@ -1332,9 +1338,9 @@ class AgentManager:
                         "user_id": str(actor.id),
                         "organization_id": str(actor.organization_id) if actor.organization_id else None,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
-                    }
+                    },
                 )
-                
+
                 logger.debug(f"Agent with ID {agent_id} successfully hard deleted")
 
     @trace_method

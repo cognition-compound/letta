@@ -14,19 +14,19 @@ logger = get_logger(__name__)
 
 class UserContextMiddleware(BaseHTTPMiddleware):
     """Middleware to extract and propagate user context from authentication."""
-    
+
     def __init__(self, app: ASGIApp):
         super().__init__(app)
-    
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         # Initialize context storage
         request.state.user_id = None
         request.state.organization_id = None
         request.state.is_admin = False
-        
+
         # Process the request
         response = await call_next(request)
-        
+
         return response
 
 
@@ -35,7 +35,7 @@ def set_user_context(request: Request, user_id: uuid.UUID, organization_id: Opti
     request.state.user_id = user_id
     request.state.organization_id = organization_id
     request.state.is_admin = is_admin
-    
+
     # Log context setting for debugging
     logger.debug(
         f"User context set for request",
@@ -44,7 +44,7 @@ def set_user_context(request: Request, user_id: uuid.UUID, organization_id: Opti
             "user_id": str(user_id),
             "organization_id": str(organization_id) if organization_id else None,
             "is_admin": is_admin,
-        }
+        },
     )
 
 

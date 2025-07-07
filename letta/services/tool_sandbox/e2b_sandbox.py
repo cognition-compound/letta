@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 try:
     from e2b.sandbox.commands.command_handle import CommandExitException
     from e2b_code_interpreter import AsyncSandbox
+
     E2B_AVAILABLE = True
 except ImportError:
     E2B_AVAILABLE = False

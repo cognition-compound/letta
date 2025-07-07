@@ -115,7 +115,12 @@ BASE_VOICE_SLEEPTIME_TOOLS = [
     "finish_rethinking_memory",
 ]
 # Multi agent tools
-MULTI_AGENT_TOOLS = ["send_message_to_agent_and_wait_for_reply", "send_message_to_agents_matching_tags", "send_message_to_agent_async", "send"]
+MULTI_AGENT_TOOLS = [
+    "send_message_to_agent_and_wait_for_reply",
+    "send_message_to_agents_matching_tags",
+    "send_message_to_agent_async",
+    "send",
+]
 LOCAL_ONLY_MULTI_AGENT_TOOLS = ["send_message_to_agent_async"]
 
 # Used to catch if line numbers are pushed in

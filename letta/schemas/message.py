@@ -336,7 +336,7 @@ class Message(BaseMessage):
                     # Handle both send_message and send with to="user"
                     is_send_message = tool_call.function.name == assistant_message_tool_name
                     is_send_to_user = False
-                    
+
                     if tool_call.function.name == "send":
                         try:
                             func_args = parse_json(tool_call.function.arguments)
@@ -344,7 +344,7 @@ class Message(BaseMessage):
                                 is_send_to_user = True
                         except:
                             pass
-                    
+
                     if use_assistant_message and (is_send_message or is_send_to_user):
                         # We need to unpack the actual message contents from the function call
                         try:
