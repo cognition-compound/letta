@@ -2,18 +2,14 @@
 Tests for enhanced inter-agent messaging with clean context formatting.
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
 from typing import List
+from unittest.mock import MagicMock, Mock, patch
 
-from letta.functions.function_sets.multi_agent import (
-    send_message_to_agent_and_wait_for_reply,
-    send_message_to_agent_async,
-    send_message_to_agents_matching_tags,
-    send,
-)
-from letta.schemas.message import MessageCreate
+import pytest
+
+from letta.functions.function_sets.multi_agent import send, send_message_to_agent_async, send_message_to_agents_matching_tags
 from letta.schemas.enums import MessageRole
+from letta.schemas.message import MessageCreate
 
 
 class TestEnhancedMessaging:
@@ -38,33 +34,6 @@ class TestEnhancedMessaging:
             server = Mock()
             mock_get_server.return_value = server
             yield server
-
-    def test_send_message_to_agent_and_wait_for_reply_clean_format(self, mock_agent):
-        """Test that send_message_to_agent_and_wait_for_reply uses clean message format."""
-        with patch("letta.functions.function_sets.multi_agent.execute_send_message_to_agent") as mock_execute:
-            mock_execute.return_value = "Test response"
-
-            # Call the function
-            result = send_message_to_agent_and_wait_for_reply(mock_agent, "Hello other agent!", "other-agent-456")
-
-            # Verify the function was called
-            mock_execute.assert_called_once()
-
-            # Check the messages format
-            messages = mock_execute.call_args[1]["messages"]
-            assert len(messages) == 2
-
-            # Check system message with clean sender context
-            assert messages[0].role == MessageRole.system
-            assert messages[0].content == '[Message from: Agent "TestAgent" (ID: test-agent-123)]'
-
-            # Check user message with clean content
-            assert messages[1].role == MessageRole.user
-            assert messages[1].content == "Hello other agent!"
-            assert messages[1].name == "TestAgent"
-            assert messages[1].sender_id == "test-agent-123"
-
-            assert result == "Test response"
 
     def test_send_message_to_agent_async_clean_format(self, mock_agent):
         """Test that send_message_to_agent_async uses clean message format."""
@@ -141,24 +110,14 @@ class TestEnhancedMessaging:
             mock_send_message.assert_called_once_with(mock_agent, "Hello user!")
             assert result == "Message sent to user"
 
-    def test_universal_send_to_agent_sync(self, mock_agent):
-        """Test universal send function routing to agent synchronously."""
-        with patch("letta.functions.function_sets.multi_agent.send_message_to_agent_and_wait_for_reply") as mock_send_sync:
-            mock_send_sync.return_value = "Agent response"
-
-            result = send(mock_agent, "Need info", to="agent:other-agent-123", wait_for_reply=True)
-
-            mock_send_sync.assert_called_once_with(mock_agent, "Need info", "other-agent-123")
-            assert result == "Agent response"
-
-    def test_universal_send_to_agent_async(self, mock_agent):
-        """Test universal send function routing to agent asynchronously."""
+    def test_universal_send_to_agent(self, mock_agent):
+        """Test universal send function routing to agent (now always async)."""
         with patch("letta.functions.function_sets.multi_agent.send_message_to_agent_async") as mock_send_async:
             mock_send_async.return_value = "Message sent successfully"
 
-            result = send(mock_agent, "FYI", to="agent:other-agent-456", wait_for_reply=False)
+            result = send(mock_agent, "Hello agent", to="agent:other-agent-456")
 
-            mock_send_async.assert_called_once_with(mock_agent, "FYI", "other-agent-456")
+            mock_send_async.assert_called_once_with(mock_agent, "Hello agent", "other-agent-456")
             assert result == "Message sent successfully"
 
     def test_universal_send_to_group(self, mock_agent):

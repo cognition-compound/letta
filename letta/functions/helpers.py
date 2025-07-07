@@ -223,50 +223,6 @@ def _parse_letta_response_for_assistant_message(
         return f"No response from {target_agent_id}"
 
 
-async def async_execute_send_message_to_agent(
-    sender_agent: "Agent",
-    messages: List[MessageCreate],
-    other_agent_id: str,
-    log_prefix: str,
-) -> Optional[str]:
-    """
-    Async helper to:
-      1) validate the target agent exists & is in the same org,
-      2) send a message via _async_send_message_with_retries.
-    """
-    server = get_letta_server()
-
-    # 1. Validate target agent
-    try:
-        server.agent_manager.get_agent_by_id(agent_id=other_agent_id, actor=sender_agent.user)
-    except NoResultFound:
-        raise ValueError(f"Target agent {other_agent_id} either does not exist or is not in org " f"({sender_agent.user.organization_id}).")
-
-    # 2. Use your async retry logic
-    return await _async_send_message_with_retries(
-        server=server,
-        sender_agent=sender_agent,
-        target_agent_id=other_agent_id,
-        messages=messages,
-        max_retries=settings.multi_agent_send_message_max_retries,
-        timeout=settings.multi_agent_send_message_timeout,
-        logging_prefix=log_prefix,
-    )
-
-
-def execute_send_message_to_agent(
-    sender_agent: "Agent",
-    messages: List[MessageCreate],
-    other_agent_id: str,
-    log_prefix: str,
-) -> Optional[str]:
-    """
-    Synchronous wrapper that calls `async_execute_send_message_to_agent` using asyncio.run.
-    This function must be called from a synchronous context (i.e., no running event loop).
-    """
-    return asyncio.run(async_execute_send_message_to_agent(sender_agent, messages, other_agent_id, log_prefix))
-
-
 async def _send_message_to_agent_no_stream(
     server: "SyncServer",
     agent_id: str,
@@ -391,8 +347,8 @@ def fire_and_forget_send_to_agent(
                     sender_agent=sender_agent,
                     target_agent_id=other_agent_id,
                     messages=messages,
-                    max_retries=settings.multi_agent_send_message_max_retries,
-                    timeout=settings.multi_agent_send_message_timeout,
+                    max_retries=3,
+                    timeout=20 * 60,  # 20 minutes
                     logging_prefix=log_prefix,
                 )
                 sender_agent.logger.info(f"{log_prefix} fire-and-forget success with retries: {result}")
@@ -445,7 +401,7 @@ async def _send_message_to_agents_matching_tags_async(
             target_agent_id=agent_state.id,
             messages=messages,
             max_retries=3,
-            timeout=settings.multi_agent_send_message_timeout,
+            timeout=20 * 60,  # 20 minutes
         )
 
     tasks = [asyncio.create_task(_send_single(agent_state)) for agent_state in matching_agents]
@@ -486,7 +442,7 @@ async def _send_message_to_all_agents_in_group_async(sender_agent: "Agent", mess
                 target_agent_id=agent_state.id,
                 messages=messages,
                 max_retries=3,
-                timeout=settings.multi_agent_send_message_timeout,
+                timeout=20 * 60,  # 20 minutes
             )
 
     tasks = [asyncio.create_task(_send_single(agent_state)) for agent_state in worker_agents]

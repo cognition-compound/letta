@@ -759,7 +759,7 @@ def test_calculate_multi_agent_tools(set_letta_environment):
         assert not set(LOCAL_ONLY_MULTI_AGENT_TOOLS).intersection(result), "Production should not include local-only tools"
 
         # Verify specific tools
-        assert "send_message_to_agent_and_wait_for_reply" in result, "Standard multi-agent tools should be in production"
+        assert "send" in result, "Universal send function should be in production"
         assert "send_message_to_agents_matching_tags" in result, "Standard multi-agent tools should be in production"
         assert "send_message_to_agent_async" not in result, "Local-only tools should not be in production"
     else:
@@ -768,7 +768,7 @@ def test_calculate_multi_agent_tools(set_letta_environment):
         assert set(LOCAL_ONLY_MULTI_AGENT_TOOLS).issubset(result), "Non-production should include local-only tools"
 
         # Verify specific tools
-        assert "send_message_to_agent_and_wait_for_reply" in result, "All multi-agent tools should be in non-production"
+        assert "send" in result, "Universal send function should be in non-production"
         assert "send_message_to_agents_matching_tags" in result, "All multi-agent tools should be in non-production"
         assert "send_message_to_agent_async" in result, "Local-only tools should be in non-production"
 

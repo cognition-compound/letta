@@ -32,10 +32,8 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
     ) -> ToolExecutionResult:
         assert agent_state is not None, "Agent state is required for multi-agent tools"
         function_map = {
-            "send_message_to_agent_and_wait_for_reply": self.send_message_to_agent_and_wait_for_reply,
             "send_message_to_agent_async": self.send_message_to_agent_async,
             "send_message_to_agents_matching_tags": self.send_message_to_agents_matching_tags_async,
-            "send_message_to_agent_async": self.send_message_to_agent_async,
             "send": self.send,
         }
 
@@ -49,11 +47,6 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
             status="success",
             func_return=function_response,
         )
-
-    async def send_message_to_agent_and_wait_for_reply(self, agent_state: AgentState, message: str, other_agent_id: str) -> str:
-        augmented_message = f"[Message from agent '{agent_state.id}'] {message}"
-
-        return str(await self._process_agent(agent_id=other_agent_id, message=augmented_message))
 
     async def send_message_to_agents_matching_tags_async(
         self, agent_state: AgentState, message: str, match_all: List[str], match_some: List[str]
@@ -116,7 +109,7 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
 
         return "Successfully sent message"
 
-    async def send(self, agent_state: AgentState, message: str, to: str, wait_for_reply: bool = False) -> str:
+    async def send(self, agent_state: AgentState, message: str, to: str) -> str:
         """Universal message sending function with explicit routing."""
         if to == "user":
             # For user messages, just return the success message
@@ -126,10 +119,7 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
 
         elif to.startswith("agent:"):
             agent_id = to.split(":", 1)[1]
-            if wait_for_reply:
-                return await self.send_message_to_agent_and_wait_for_reply(agent_state, message, agent_id)
-            else:
-                return await self.send_message_to_agent_async(agent_state, message, agent_id)
+            return await self.send_message_to_agent_async(agent_state, message, agent_id)
 
         elif to.startswith("group:"):
             # TODO: Implement group messaging in executor

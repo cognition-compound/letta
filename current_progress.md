@@ -2,6 +2,25 @@
 
 ## 🚀 Recent Updates
 
+### ✅ ARCHITECTURAL: Async-Only Agent Communication (2025-01-07)
+**Removed wait_for_reply parameter for cleaner agent architecture** - All agent-to-agent communication is now asynchronous, eliminating blocking behavior and execution interruption.
+
+**Changes:**
+- Removed `wait_for_reply` parameter from `send()` function entirely
+- Removed synchronous messaging functions: `send_message_to_agent_and_wait_for_reply()`, `execute_send_message_to_agent()`, `async_execute_send_message_to_agent()`
+- Updated tool executor to always use async messaging
+- Removed unused timeout and retry settings from configuration
+- Updated tests to reflect async-only behavior
+
+**Benefits:** 
+- No execution blocking or interruption
+- Cleaner, event-driven architecture
+- No duplicate message delivery
+- Simplified API surface
+- More natural agent autonomy
+
+**Impact:** All agent-to-agent communication is now fire-and-forget, allowing agents to process incoming messages in their own time without blocking the sender.
+
 ### ✅ Upstream 0.8.10 Release Merged (2025-01-07)
 **Successfully merged Letta 0.8.10 upstream release** - Integrated latest features while preserving all custom implementations.
 
@@ -37,17 +56,18 @@
 
 **Documentation:** Updated in `docs/SEND_FUNCTION_DEEP_ANALYSIS.md`
 
-### ✅ PRODUCTION READY: Unified Send Function (2025-01-04)
-**Universal message routing with single `send()` function** - Consolidates all agent messaging (user, agent-to-agent, group, broadcast) into one consistent interface.
+### ✅ PRODUCTION READY: Unified Send Function (2025-01-04, Enhanced 2025-01-07)
+**Universal message routing with single `send()` function** - Consolidates all agent messaging (user, agent-to-agent, group, broadcast) into one consistent async-only interface.
 
 **Implementation Journey:**
-1. **Created unified function** in `multi_agent.py` with routing: `send(message, to="user|agent:<id>|group:<id>|broadcast:<tag>", wait_for_reply=bool)`
+1. **Created unified function** in `multi_agent.py` with routing: `send(message, to="user|agent:<id>|group:<id>|broadcast:<tag>")`
 2. **Registered in system** - Added to `MULTI_AGENT_TOOLS` constants and `multi_agent_tool_executor.py` function_map
 3. **Fixed streaming** - Updated both Anthropic and OpenAI interfaces to recognize `send(to="user")` as equivalent to `send_message`
 4. **Fixed persistence** - Modified `schemas/message.py:to_letta_messages()` to convert `send` tool calls to AssistantMessages
 5. **Discovered message flow** - Interface display → Tool execution → LLM response → DB persistence → API conversion
+6. **Removed sync behavior** - Eliminated `wait_for_reply` parameter for cleaner async-only architecture
 
-**Benefits:** Single API to learn, explicit routing, backwards compatible, consistent behavior
+**Benefits:** Single API to learn, explicit routing, async-only messaging, consistent behavior
 
 **Documentation:** Complete implementation details in `docs/UNIFIED_SEND_IMPLEMENTATION.md`
 
@@ -87,9 +107,23 @@ Both multimodal messaging and file processing systems are **production-ready** w
 - ✅ Complete documentation
 - ✅ All critical bugs resolved
 
+## 🔧 Current Issues
+
+### Database Connection Pooling (2025-01-07)
+**Excessive PostgreSQL connections identified** - Analysis shows 25+ concurrent connections due to dual engine architecture, connection multiplication in service layer, and session management issues.
+
+**Root causes documented in:** `docs/DATABASE_CONNECTION_POOLING_ANALYSIS.md`
+- Session leak in update methods (missing context managers)
+- No session sharing between managers (5+ connections per agent operation)
+- New event loops created with asyncio.run() multiplying connection pools
+- Default pool size of 25 + 10 overflow × 2 engines = 70 possible connections
+
+**Quick fix:** Set `LETTA_PG_POOL_SIZE=10` and `LETTA_PG_MAX_OVERFLOW=5` to reduce immediate impact.
+
 ## 📚 Documentation References
 
 **Detailed technical information available in:**
+- `docs/DATABASE_CONNECTION_POOLING_ANALYSIS.md` - Database connection analysis and fixes
 - `docs/MULTIMODAL_*.md` - Complete multimodal implementation guide
 - `docs/FILE_PROCESSING_ARCHITECTURE.md` - File system architecture details  
 - `docs/FILE_TOOLS_REFERENCE.md` - File tool documentation

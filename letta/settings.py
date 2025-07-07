@@ -218,8 +218,6 @@ class Settings(BaseSettings):
     plugin_register: Optional[str] = None
 
     # multi agent settings
-    multi_agent_send_message_max_retries: int = 3
-    multi_agent_send_message_timeout: int = 20 * 60
     multi_agent_concurrent_sends: int = 50
 
     # telemetry logging

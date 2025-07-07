@@ -116,7 +116,6 @@ BASE_VOICE_SLEEPTIME_TOOLS = [
 ]
 # Multi agent tools
 MULTI_AGENT_TOOLS = [
-    "send_message_to_agent_and_wait_for_reply",
     "send_message_to_agents_matching_tags",
     "send_message_to_agent_async",
     "send",

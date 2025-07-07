@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the implementation of the unified `send()` function in Letta, which consolidates all message sending functionality into a single, consistent interface. This work was completed on 2025-01-04.
+This document describes the implementation of the unified `send()` function in Letta, which consolidates all message sending functionality into a single, consistent interface. This work was completed on 2025-01-04, with a major architectural change completed on 2025-01-07 to remove synchronous messaging entirely.
 
 ## Background
 
@@ -23,25 +23,36 @@ This fragmentation made the API inconsistent and harder to use.
 
 ### Signature
 ```python
-def send(self: "Agent", message: str, to: str, wait_for_reply: bool = False) -> str
+def send(self: "Agent", message: str, to: str) -> str
 ```
 
 ### Parameters
 - `message`: The content to send
 - `to`: Target specification using a simple routing syntax:
   - `"user"` - sends to the human user
-  - `"agent:<agent_id>"` - sends to a specific agent
+  - `"agent:<agent_id>"` - sends to a specific agent (always async)
   - `"group:<group_id>"` - sends to all agents in a group
   - `"broadcast:<tag>"` - sends to all agents with the specified tag
-- `wait_for_reply`: If True, waits for response (sync). If False, sends without waiting (async)
 
 ### Examples
 ```python
-send("Hello!", to="user")                                    # To human
-send("Status update", to="agent:agent-123", wait_for_reply=False)  # Async to agent
-send("Need info", to="agent:agent-456", wait_for_reply=True)       # Sync to agent
-send("Alert", to="broadcast:critical")                       # Broadcast by tag
+send("Hello!", to="user")                    # To human
+send("Status update", to="agent:agent-123")  # Async to agent
+send("Alert", to="broadcast:critical")       # Broadcast by tag
 ```
+
+## Architecture Change: Async-Only Messaging (2025-01-07)
+
+After the initial implementation, we identified a fundamental architectural issue with synchronous messaging:
+- `wait_for_reply=True` caused blocking behavior that interrupted natural agent execution
+- It created duplicate message delivery (once as tool return, once as system message)
+- It went against the event-driven nature of the agent system
+
+**Solution**: Removed the `wait_for_reply` parameter entirely. All agent-to-agent communication is now asynchronous (fire-and-forget), allowing for:
+- Cleaner, more natural agent interaction patterns
+- No execution blocking or interruption
+- Consistent async messaging behavior
+- Simplified API surface
 
 ## Implementation Details
 
@@ -151,9 +162,10 @@ if use_assistant_message and (is_send_message or is_send_to_user):
 
 1. **Unified API** - Single function for all messaging needs
 2. **Explicit routing** - Clear target specification with `to` parameter
-3. **Backwards compatible** - All existing functions still work
+3. **Async-only architecture** - All agent communication is non-blocking and event-driven
 4. **Consistent behavior** - Same function whether sending to user, agent, or group
 5. **Better discoverability** - One function to learn instead of six
+6. **Simplified API** - No complex sync/async parameter decisions
 
 ## Technical Debt Identified
 
@@ -166,4 +178,4 @@ The implementation should be tested with:
 2. Verifying messages appear in the ADE
 3. Confirming messages are returned when polling the API
 4. Testing all routing targets (agent, group, broadcast)
-5. Verifying sync/async behavior with `wait_for_reply`
+5. Verifying async behavior for agent-to-agent communication
