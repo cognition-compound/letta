@@ -115,8 +115,6 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
 
     async def send_message_to_agent_async(self, agent_state: AgentState, message: str, other_agent_id: str) -> str:
         """Send message to agent without waiting for response."""
-        if os.getenv("LETTA_ENVIRONMENT") == "PRODUCTION":
-            raise RuntimeError("This tool is not allowed to be run on Letta Cloud.")
 
         # Build the prefixed system message
         prefixed = (
