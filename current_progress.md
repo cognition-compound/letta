@@ -2,6 +2,28 @@
 
 ## 🚀 Recent Updates
 
+### ✅ Upstream 0.8.10 Release Merged (2025-01-07)
+**Successfully merged Letta 0.8.10 upstream release** - Integrated latest features while preserving all custom implementations.
+
+**Key Upstream Changes:**
+- Version bump to 0.8.10 
+- Fixed `None` content in assistant messages
+- Added Pinecone cloud embedding support with new `pinecone` dependency
+- Reverted default summarizer changes
+- Added frequency penalty for gpt-4o-mini
+- Various PyRight lint fixes
+
+**Custom Features Preserved:**
+- ✅ Unified `send()` function with all routing intact
+- ✅ Simplified agent message prefixes
+- ✅ Modern logging system with OpenTelemetry support
+- ✅ Optimized Docker build configuration
+- ✅ All custom documentation and development tools
+
+**Conflicts Resolved:**
+- `.github/scripts/model-sweep/`: Kept our deletion (removed in commit dd0330fc)
+- `poetry.lock`: Regenerated to include both upstream and custom dependencies
+
 ### ✅ Simplified Agent Message Prefixes (2025-01-07)
 **Minimal prefixing for agent autonomy** - Removed instructional prefixes from inter-agent messages, allowing agents to decide response strategies.
 
