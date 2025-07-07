@@ -337,13 +337,28 @@ class Message(BaseMessage):
                     is_send_message = tool_call.function.name == assistant_message_tool_name
                     is_send_to_user = False
 
+                    # Special handling for 'send' function
                     if tool_call.function.name == "send":
+                        # For 'send', we MUST check the 'to' parameter
+                        # even if assistant_message_tool_name == "send"
                         try:
                             func_args = parse_json(tool_call.function.arguments)
-                            if func_args.get("to") == "user":
+                            to_param = func_args.get("to", "")
+                            
+                            # Only treat as assistant message if explicitly to="user"
+                            if to_param == "user":
                                 is_send_to_user = True
-                        except:
-                            pass
+                                
+                            # If assistant_message_tool_name is "send", we need to override
+                            # is_send_message to prevent agent-to-agent messages from being converted
+                            if assistant_message_tool_name == "send" and to_param != "user":
+                                is_send_message = False
+                                
+                        except Exception as e:
+                            # If parsing fails, default to showing as tool call
+                            # This is safer than converting to assistant message
+                            if assistant_message_tool_name == "send":
+                                is_send_message = False
 
                     if use_assistant_message and (is_send_message or is_send_to_user):
                         # We need to unpack the actual message contents from the function call

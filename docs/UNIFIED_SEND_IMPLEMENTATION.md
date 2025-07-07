@@ -171,6 +171,20 @@ if use_assistant_message and (is_send_message or is_send_to_user):
 
 During implementation, we discovered that `/letta/schemas/message.py` is a 1174-line monster class that violates many software engineering principles. It handles message data, format conversions for multiple providers (OpenAI, Anthropic, Google, Cohere), and Letta format conversions all in one place. This should be refactored into smaller, focused classes.
 
+## Bug Fix: Agent-to-Agent Message Display (2025-01-07)
+
+### Issue
+When the ADE (Agent Development Environment) set `assistant_message_tool_name="send"`, ALL `send()` calls were being converted to `AssistantMessage`, making agent-to-agent communication appear as regular text messages instead of showing the tool call details.
+
+### Solution
+Enhanced the message conversion logic in `to_letta_messages()` to:
+- Always check the `to` parameter for `send()` function calls
+- Only convert `send(to="user")` to `AssistantMessage`
+- Keep all other targets (`agent:X`, `group:X`, `broadcast:X`) as `ToolCallMessage`
+- Handle edge cases where JSON parsing might fail by defaulting to `ToolCallMessage`
+
+The fix ensures that the ADE correctly displays agent-to-agent messages as tool calls, improving transparency and debugging capabilities.
+
 ## Testing
 
 The implementation should be tested with:

@@ -2,6 +2,19 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: Agent-to-Agent Message Display in ADE (2025-01-07)
+**Fixed incorrect display of agent messages as assistant messages** - Agent-to-agent messages now correctly show as tool calls in the ADE, preserving transparency and debugging capabilities.
+
+**Issue:** When `assistant_message_tool_name="send"` was passed by the ADE, ALL `send()` calls were being converted to `AssistantMessage`, making agent-to-agent communication appear as regular text messages.
+
+**Fix:** Enhanced message conversion logic in `schemas/message.py` to:
+- Always check the `to` parameter for `send()` function calls
+- Only convert `send(to="user")` to `AssistantMessage` 
+- Keep all other targets (`agent:X`, `group:X`, `broadcast:X`) as `ToolCallMessage`
+- Handle edge cases where JSON parsing might fail
+
+**Impact:** ADE users can now see the full details of agent-to-agent communication, improving transparency and debugging capabilities.
+
 ### ✅ ARCHITECTURAL: Async-Only Agent Communication (2025-01-07)
 **Removed wait_for_reply parameter for cleaner agent architecture** - All agent-to-agent communication is now asynchronous, eliminating blocking behavior and execution interruption.
 
