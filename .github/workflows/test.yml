@@ -109,6 +109,38 @@ jobs:
           
           # Run database migrations
           poetry run alembic upgrade head
+          
+          # Create default LettaProvider for tests
+          poetry run python -c "
+          from letta.services.organization_manager import OrganizationManager
+          from letta.services.user_manager import UserManager  
+          from letta.services.provider_manager import ProviderManager
+          from letta.schemas.providers import LettaProvider
+          from letta.schemas.enums import ProviderType, ProviderCategory
+          
+          # Create managers
+          org_manager = OrganizationManager()
+          user_manager = UserManager()
+          provider_manager = ProviderManager()
+          
+          # Get or create default org and user
+          org = org_manager.create_default_organization()
+          user = user_manager.create_default_user(org_id=org.id)
+          
+          # Create LettaProvider
+          letta_provider = LettaProvider(
+              name='letta',
+              provider_type=ProviderType.letta,
+              provider_category=ProviderCategory.base,
+              organization_id=org.id
+          )
+          
+          try:
+              created_provider = provider_manager.create_provider(letta_provider, actor=user)
+              print(f'Created LettaProvider: {created_provider.name}')
+          except Exception as e:
+              print(f'Provider creation failed (may already exist): {e}')
+          "
 
       - name: Run tests
         env:
