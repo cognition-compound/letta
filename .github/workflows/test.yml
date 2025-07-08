@@ -18,6 +18,21 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.0-pg17
+        env:
+          POSTGRES_USER: letta
+          POSTGRES_PASSWORD: letta
+          POSTGRES_DB: letta_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -45,12 +60,52 @@ jobs:
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: poetry install -E dev -E server -E postgres -E tests
 
-      - name: Run tests
+      - name: Set up database
+        env:
+          LETTA_PG_URI: postgresql+pg8000://letta:letta@localhost:5432/letta_test
         run: |
+          # Wait for PostgreSQL to be ready
+          poetry run python -c "
+          import time
+          import psycopg2
+          from psycopg2 import OperationalError
+          
+          for i in range(30):
+              try:
+                  conn = psycopg2.connect(
+                      host='localhost',
+                      port=5432,
+                      user='letta',
+                      password='letta',
+                      database='letta_test'
+                  )
+                  conn.close()
+                  print('PostgreSQL is ready!')
+                  break
+              except OperationalError:
+                  print(f'Waiting for PostgreSQL... ({i+1}/30)')
+                  time.sleep(1)
+          else:
+              raise Exception('PostgreSQL failed to start')
+          "
+          
+          # Run database migrations
+          poetry run alembic upgrade head
+
+      - name: Run tests
+        env:
+          LETTA_PG_URI: postgresql+pg8000://letta:letta@localhost:5432/letta_test
+          LETTA_SERVER_PASSWORD: test_password
+          HOST: 127.0.0.1
+          PORT: 8283
+        run: |
+          # Skip tests that require external API keys but run database tests
           poetry run pytest tests/ performance_tests/ \
             --json-report --json-report-file=test-results.json \
             --tb=short \
-            -v
+            -v \
+            -x \
+            --maxfail=10
         continue-on-error: true
 
       - name: Upload test results
