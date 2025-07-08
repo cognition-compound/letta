@@ -190,7 +190,6 @@ class TestMCPAutoDiscovery:
                     if mcp_tool.name == "test_tool_2":
                         raise Exception("Invalid tool schema")
                     return ToolCreate(
-                        name=mcp_tool.name,
                         description=mcp_tool.description,
                         source_code=f"def {mcp_tool.name}(): pass",
                         json_schema={"name": mcp_tool.name, "type": "function"},
@@ -358,7 +357,7 @@ class TestMCPAutoDiscovery:
                 json_schema={"name": "stale_tool_1", "type": "function"},
             ),
             PydanticTool(
-                id="tool-existing-1",
+                id="tool-34567890",
                 name="test_tool_1",  # This one exists in mock_mcp_tools
                 tool_type=ToolType.EXTERNAL_MCP,
                 source_code="def test_tool_1(): pass",
@@ -382,7 +381,7 @@ class TestMCPAutoDiscovery:
                     # Mock tool registration
                     with patch.object(mcp_manager.tool_manager, "create_mcp_tool_async", new=AsyncMock()) as mock_create:
                         mock_create.return_value = PydanticTool(
-                            id="new-tool-id",
+                            id="tool-45678901",
                             name="test_tool",
                             tool_type=ToolType.EXTERNAL_MCP,
                             source_code="def test_tool(): pass",
@@ -393,9 +392,9 @@ class TestMCPAutoDiscovery:
 
                         # Verify stale tools were deleted
                         assert mock_delete.call_count == 2  # stale_tool_1 and stale_tool_2
-                        deleted_tool_ids = {call[1]["tool_id"] for call in mock_delete.call_args_list}
-                        assert "tool-stale-1" in deleted_tool_ids
-                        assert "tool-stale-2" in deleted_tool_ids
+                        deleted_tool_ids = {call[0][0] for call in mock_delete.call_args_list}  # First positional argument 
+                        assert "tool-12345abc" in deleted_tool_ids
+                        assert "tool-23456def" in deleted_tool_ids
 
                         # Verify current tools were registered
                         assert mock_create.call_count == 3  # All 3 tools from mock_mcp_tools
@@ -435,7 +434,7 @@ class TestMCPAutoDiscovery:
                 with patch.object(mcp_manager.tool_manager, "delete_tool_by_id_async", new=AsyncMock()) as mock_delete:
 
                     def deletion_side_effect(tool_id, actor):
-                        if tool_id == "tool-stale-1":
+                        if tool_id == "tool-12345abc":
                             raise Exception("Deletion failed")
                         return None
 
@@ -458,22 +457,32 @@ class TestMCPAutoDiscovery:
         """Test querying existing MCP tools from database."""
         mcp_manager = MCPManager()
 
-        # Mock database session and query
-        with patch("letta.services.mcp_manager.db_registry.async_session") as mock_session:
-            mock_session_instance = AsyncMock()
-            mock_session.__aenter__.return_value = mock_session_instance
-
-            # Mock query result
+        # Mock database session and query with proper async setup
+        with patch("letta.services.mcp_manager.db_registry.async_session") as mock_async_session:
+            # Create mock tool and pydantic result
             mock_tool = Mock()
-            mock_tool.to_pydantic.return_value = PydanticTool(
+            pydantic_tool = PydanticTool(
                 id="tool-12345678",
                 name="test_tool",
                 tool_type=ToolType.EXTERNAL_MCP,
                 source_code="def test_tool(): pass",
                 json_schema={"name": "test_tool", "type": "function"},
             )
+            mock_tool.to_pydantic.return_value = pydantic_tool
 
-            mock_session_instance.scalars.return_value.all.return_value = [mock_tool]
+            # Create mock session with proper async context manager behavior
+            mock_session = AsyncMock()
+            
+            # Create a context manager that returns the session
+            async_context_manager = AsyncMock()
+            async_context_manager.__aenter__.return_value = mock_session
+            async_context_manager.__aexit__.return_value = None
+            mock_async_session.return_value = async_context_manager
+            
+            # Mock the scalars call and result
+            mock_result = Mock() 
+            mock_result.all.return_value = [mock_tool]
+            mock_session.scalars.return_value = mock_result
 
             result = await mcp_manager._get_existing_mcp_tools_async("test-server", mock_user)
 
@@ -483,4 +492,4 @@ class TestMCPAutoDiscovery:
             assert result[0].tool_type == ToolType.EXTERNAL_MCP
 
             # Verify query was constructed correctly
-            mock_session_instance.scalars.assert_called_once()
+            mock_session.scalars.assert_called_once()

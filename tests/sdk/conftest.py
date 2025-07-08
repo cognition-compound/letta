@@ -86,8 +86,8 @@ def create_test_module(
         """Create an agent to be used as manager in supervisor groups."""
         agent = client.agents.create(
             name="caren_agent",
-            model="openai/gpt-4o-mini",
-            embedding="openai/text-embedding-3-small",
+            model="letta/letta-free",
+            embedding="letta/letta-free",
         )
 
         # Add finalizer to ensure cleanup happens in the right order
