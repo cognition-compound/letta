@@ -43,6 +43,7 @@ from letta.schemas.letta_stop_reason import LettaStopReason, StopReasonType
 from letta.schemas.llm_config import LLMConfig
 from letta.schemas.message import Message, MessageCreate
 from letta.schemas.openai.chat_completion_response import ToolCall, UsageStatistics
+from letta.schemas.parallel_tool_call import ParallelExecutionSummary, ParallelToolCallConfig
 from letta.schemas.provider_trace import ProviderTraceCreate
 from letta.schemas.tool_execution_result import ToolExecutionResult
 from letta.schemas.usage import LettaUsageStatistics
@@ -58,6 +59,7 @@ from letta.services.step_manager import NoopStepManager, StepManager
 from letta.services.summarizer.enums import SummarizationMode
 from letta.services.summarizer.summarizer import Summarizer
 from letta.services.telemetry_manager import NoopTelemetryManager, TelemetryManager
+from letta.services.tool_executor.tool_categorizer import ToolCategorizer
 from letta.services.tool_executor.tool_execution_manager import ToolExecutionManager
 from letta.settings import model_settings, settings, summarizer_settings
 from letta.system import package_function_response
@@ -137,6 +139,10 @@ class LettaAgent(BaseAgent):
             message_buffer_min=message_buffer_min,
             partial_evict_summarizer_percentage=partial_evict_summarizer_percentage,
         )
+
+        # Parallel tool call support
+        self.parallel_tool_config = ParallelToolCallConfig()
+        self.tool_categorizer = ToolCategorizer()
 
     async def _check_run_cancellation(self) -> bool:
         """
@@ -255,7 +261,7 @@ class LettaAgent(BaseAgent):
             if not response.choices[0].message.tool_calls:
                 # TODO: make into a real error
                 raise ValueError("No tool calls found in response, model must make a tool call")
-            tool_call = response.choices[0].message.tool_calls[0]
+            tool_calls = response.choices[0].message.tool_calls
             if response.choices[0].message.reasoning_content:
                 reasoning = [
                     ReasoningContent(
@@ -272,17 +278,34 @@ class LettaAgent(BaseAgent):
                 self.logger.info("No reasoning content found.")
                 reasoning = None
 
-            persisted_messages, should_continue, stop_reason = await self._handle_ai_response(
-                tool_call,
-                valid_tool_names,
-                agent_state,
-                tool_rules_solver,
-                response.usage,
-                reasoning_content=reasoning,
-                initial_messages=initial_messages,
-                agent_step_span=agent_step_span,
-                is_final_step=(i == max_steps - 1),
-            )
+            # Handle single vs multiple tool calls
+            if len(tool_calls) == 1:
+                # Single tool call - use existing path for backwards compatibility
+                persisted_messages, should_continue, stop_reason = await self._handle_ai_response(
+                    tool_calls[0],
+                    valid_tool_names,
+                    agent_state,
+                    tool_rules_solver,
+                    response.usage,
+                    reasoning_content=reasoning,
+                    initial_messages=initial_messages,
+                    agent_step_span=agent_step_span,
+                    is_final_step=(i == max_steps - 1),
+                )
+            else:
+                # Multiple tool calls - use parallel execution path
+                persisted_messages, should_continue, stop_reason = await self._handle_multiple_tool_calls(
+                    tool_calls,
+                    valid_tool_names,
+                    agent_state,
+                    tool_rules_solver,
+                    response.usage,
+                    reasoning_content=reasoning,
+                    initial_messages=initial_messages,
+                    agent_step_span=agent_step_span,
+                    is_final_step=(i == max_steps - 1),
+                    step_id=step_id,
+                )
 
             # TODO (cliandy): handle message contexts with larger refactor and dedupe logic
             new_message_idx = len(initial_messages) if initial_messages else 0
@@ -417,7 +440,7 @@ class LettaAgent(BaseAgent):
             if not response.choices[0].message.tool_calls:
                 # TODO: make into a real error
                 raise ValueError("No tool calls found in response, model must make a tool call")
-            tool_call = response.choices[0].message.tool_calls[0]
+            tool_calls = response.choices[0].message.tool_calls
             if response.choices[0].message.reasoning_content:
                 reasoning = [
                     ReasoningContent(
@@ -434,19 +457,37 @@ class LettaAgent(BaseAgent):
                 self.logger.info("No reasoning content found.")
                 reasoning = None
 
-            persisted_messages, should_continue, stop_reason = await self._handle_ai_response(
-                tool_call,
-                valid_tool_names,
-                agent_state,
-                tool_rules_solver,
-                response.usage,
-                reasoning_content=reasoning,
-                step_id=step_id,
-                initial_messages=initial_messages,
-                agent_step_span=agent_step_span,
-                is_final_step=(i == max_steps - 1),
-                run_id=run_id,
-            )
+            # Handle single vs multiple tool calls
+            if len(tool_calls) == 1:
+                # Single tool call - use existing path for backwards compatibility
+                persisted_messages, should_continue, stop_reason = await self._handle_ai_response(
+                    tool_calls[0],
+                    valid_tool_names,
+                    agent_state,
+                    tool_rules_solver,
+                    response.usage,
+                    reasoning_content=reasoning,
+                    step_id=step_id,
+                    initial_messages=initial_messages,
+                    agent_step_span=agent_step_span,
+                    is_final_step=(i == max_steps - 1),
+                    run_id=run_id,
+                )
+            else:
+                # Multiple tool calls - use parallel execution path
+                persisted_messages, should_continue, stop_reason = await self._handle_multiple_tool_calls(
+                    tool_calls,
+                    valid_tool_names,
+                    agent_state,
+                    tool_rules_solver,
+                    response.usage,
+                    reasoning_content=reasoning,
+                    initial_messages=initial_messages,
+                    agent_step_span=agent_step_span,
+                    is_final_step=(i == max_steps - 1),
+                    step_id=step_id,
+                    run_id=run_id,
+                )
             new_message_idx = len(initial_messages) if initial_messages else 0
             self.response_messages.extend(persisted_messages[new_message_idx:])
             new_in_context_messages.extend(persisted_messages[new_message_idx:])
@@ -986,6 +1027,159 @@ class LettaAgent(BaseAgent):
                 force_tool_call,
             ),
             valid_tool_names,
+        )
+
+    @trace_method
+    async def _handle_multiple_tool_calls(
+        self,
+        tool_calls: list[ToolCall],
+        valid_tool_names: list[str],
+        agent_state: AgentState,
+        tool_rules_solver: ToolRulesSolver,
+        usage: UsageStatistics,
+        reasoning_content: list[TextContent | ReasoningContent | RedactedReasoningContent | OmittedReasoningContent] | None = None,
+        initial_messages: list[Message] | None = None,
+        agent_step_span: Optional["Span"] = None,
+        is_final_step: bool | None = None,
+        step_id: str | None = None,
+        run_id: str | None = None,
+    ) -> tuple[list[Message], bool, LettaStopReason | None]:
+        """
+        Handle multiple tool calls from an AI response, executing them in parallel or sequentially based on configuration.
+        """
+        import uuid
+        from letta.server.rest_api.utils import create_letta_messages_from_llm_response
+
+        self.logger.info(f"Handling {len(tool_calls)} tool calls")
+
+        # Determine if we should execute in parallel
+        tools_to_execute = []
+        for tool_call in tool_calls:
+            tool_name = tool_call.function.name
+            if tool_name in valid_tool_names:
+                target_tool = next((x for x in agent_state.tools if x.name == tool_name), None)
+                if target_tool:
+                    tools_to_execute.append(target_tool)
+        
+        # Check if parallel execution is safe
+        is_safe_parallel, unsafe_tools = self.tool_categorizer.is_safe_for_parallel_execution(
+            tools_to_execute,
+            allow_memory_parallel=self.parallel_tool_config.allow_memory_tools_parallel,
+        )
+
+        # Create tool execution manager
+        sandbox_env_vars = {var.key: var.value for var in agent_state.tool_exec_environment_variables}
+        tool_execution_manager = ToolExecutionManager(
+            agent_state=agent_state,
+            message_manager=self.message_manager,
+            agent_manager=self.agent_manager,
+            block_manager=self.block_manager,
+            job_manager=self.job_manager,
+            passage_manager=self.passage_manager,
+            sandbox_env_vars=sandbox_env_vars,
+            actor=self.actor,
+        )
+
+        if is_safe_parallel and self.parallel_tool_config.enabled and len(tool_calls) > 1:
+            # Execute in parallel
+            self.logger.info(f"Executing {len(tool_calls)} tools in parallel")
+            parallel_summary = await tool_execution_manager.execute_tools_parallel_async(
+                tool_calls=tool_calls,
+                agent_state=agent_state,
+                config=self.parallel_tool_config,
+                agent_step_span=agent_step_span,
+                step_id=step_id,
+            )
+            
+            # Create messages from parallel results
+            all_messages = []
+            continue_stepping = parallel_summary.continue_stepping
+            stop_reason = parallel_summary.stop_reason
+            
+            # For each successful result, create the message pair
+            for result in parallel_summary.results:
+                if result.success_flag:
+                    # Extract tool call details
+                    tool_call_id = result.tool_call_id
+                    function_name = result.tool_call.function.name
+                    function_arguments = json.loads(result.tool_call.function.arguments)
+                    
+                    # Create messages for this tool call
+                    tool_messages = create_letta_messages_from_llm_response(
+                        agent_id=agent_state.id,
+                        model=agent_state.llm_config.model,
+                        function_name=function_name,
+                        function_arguments=function_arguments,
+                        tool_execution_result=result.execution_result,
+                        tool_call_id=tool_call_id,
+                        function_call_success=result.execution_result.success_flag,
+                        function_response=result.execution_result.func_return,
+                        timezone=agent_state.timezone,
+                        actor=self.actor,
+                        continue_stepping=continue_stepping,
+                        reasoning_content=reasoning_content if result == parallel_summary.results[0] else None,  # Only add reasoning to first message
+                        step_id=step_id,
+                    )
+                    all_messages.extend(tool_messages)
+
+            # Persist all messages
+            if all_messages:
+                persisted_messages = await self.message_manager.create_many_messages_async(all_messages, actor=self.actor)
+                agent_state = await self._update_agent_state_from_tool_results(agent_state, parallel_summary.results)
+                return persisted_messages, continue_stepping, stop_reason
+            else:
+                # No successful executions
+                return [], False, LettaStopReason(stop_reason=StopReasonType.error.value)
+
+        else:
+            # Execute sequentially (fall back to existing behavior)
+            if not is_safe_parallel:
+                self.logger.info(f"Executing {len(tool_calls)} tools sequentially due to safety concerns: {unsafe_tools}")
+            else:
+                self.logger.info(f"Executing {len(tool_calls)} tools sequentially (parallel execution disabled)")
+            
+            all_messages = []
+            continue_stepping = False
+            stop_reason = None
+            
+            for tool_call in tool_calls:
+                # Execute each tool call individually using existing method
+                persisted_messages, should_continue, current_stop_reason = await self._handle_ai_response(
+                    tool_call,
+                    valid_tool_names,
+                    agent_state,
+                    tool_rules_solver,
+                    usage,
+                    reasoning_content=reasoning_content if tool_call == tool_calls[0] else None,  # Only add reasoning to first call
+                    initial_messages=initial_messages,
+                    agent_step_span=agent_step_span,
+                    is_final_step=is_final_step,
+                    step_id=step_id,
+                    run_id=run_id,
+                )
+                
+                all_messages.extend(persisted_messages)
+                continue_stepping = should_continue or continue_stepping  # Continue if any tool succeeded
+                if current_stop_reason:
+                    stop_reason = current_stop_reason
+                
+                # Update agent state after each tool execution
+                agent_state = await self.agent_manager.get_agent_by_id_async(
+                    agent_id=self.agent_id, 
+                    include_relationships=["tools", "memory", "tool_exec_environment_variables"], 
+                    actor=self.actor
+                )
+            
+            return all_messages, continue_stepping, stop_reason
+
+    async def _update_agent_state_from_tool_results(self, agent_state: AgentState, results: list) -> AgentState:
+        """Update agent state based on tool execution results (placeholder for future implementation)."""
+        # This would handle updating agent state from parallel tool results
+        # For now, just return the current state
+        return await self.agent_manager.get_agent_by_id_async(
+            agent_id=self.agent_id, 
+            include_relationships=["tools", "memory", "tool_exec_environment_variables"], 
+            actor=self.actor
         )
 
     @trace_method

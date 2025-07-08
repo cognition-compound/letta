@@ -221,7 +221,9 @@ class OpenAIClient(LLMClientBase):
             data.frequency_penalty = llm_config.frequency_penalty
 
         if tools and supports_parallel_tool_calling(model):
-            data.parallel_tool_calls = False
+            # Enable parallel tool calls based on environment variable or default to True
+            enable_parallel = os.getenv("LETTA_ENABLE_PARALLEL_TOOL_CALLS", "true").lower() == "true"
+            data.parallel_tool_calls = enable_parallel
 
         # always set user id for openai requests
         if self.actor:
