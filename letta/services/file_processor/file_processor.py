@@ -131,7 +131,7 @@ class FileProcessor:
 
             logger.info(f"Starting OCR extraction for {filename}")
             log_event("file_processor.ocr_started", {"filename": filename, "file_size": len(content), "mime_type": file_metadata.file_type})
-            ocr_response = await self.file_parser.extract_text(content, mime_type=file_metadata.file_type)
+            ocr_response = await self.file_parser.extract_text(content, mime_type=file_metadata.file_type or "application/octet-stream")
 
             # update file with raw text
             raw_markdown_text = "".join([page.markdown for page in ocr_response.pages])
