@@ -89,6 +89,24 @@ jobs:
               raise Exception('PostgreSQL failed to start')
           "
           
+          # Create pgvector extension
+          poetry run python -c "
+          import psycopg2
+          conn = psycopg2.connect(
+              host='localhost',
+              port=5432,
+              user='letta',
+              password='letta',
+              database='letta_test'
+          )
+          conn.autocommit = True
+          cur = conn.cursor()
+          cur.execute('CREATE EXTENSION IF NOT EXISTS vector;')
+          print('Created pgvector extension')
+          cur.close()
+          conn.close()
+          "
+          
           # Run database migrations
           poetry run alembic upgrade head
 
