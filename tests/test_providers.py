@@ -16,6 +16,7 @@ from letta.settings import model_settings
 @pytest.mark.integration
 @pytest.mark.external_api
 @pytest.mark.openai_basic
+@pytest.mark.skipif(not model_settings.openai_api_key, reason="OpenAI API key not configured")
 def test_openai():
     provider = OpenAIProvider(
         name="openai",
@@ -35,6 +36,7 @@ def test_openai():
 @pytest.mark.integration
 @pytest.mark.external_api
 @pytest.mark.openai_basic
+@pytest.mark.skipif(not model_settings.openai_api_key, reason="OpenAI API key not configured")
 async def test_openai_async():
     provider = OpenAIProvider(
         name="openai",
@@ -52,6 +54,7 @@ async def test_openai_async():
 
 @pytest.mark.integration
 @pytest.mark.external_api
+@pytest.mark.skipif(not model_settings.deepseek_api_key, reason="DeepSeek API key not configured")
 def test_deepseek():
     provider = DeepSeekProvider(name="deepseek", api_key=model_settings.deepseek_api_key)
     models = provider.list_llm_models()
@@ -62,6 +65,7 @@ def test_deepseek():
 @pytest.mark.integration
 @pytest.mark.external_api
 @pytest.mark.anthropic_basic
+@pytest.mark.skipif(not model_settings.anthropic_api_key, reason="Anthropic API key not configured")
 def test_anthropic():
     provider = AnthropicProvider(
         name="anthropic",
@@ -76,6 +80,7 @@ def test_anthropic():
 @pytest.mark.integration
 @pytest.mark.external_api
 @pytest.mark.anthropic_basic
+@pytest.mark.skipif(not model_settings.anthropic_api_key, reason="Anthropic API key not configured")
 async def test_anthropic_async():
     provider = AnthropicProvider(
         name="anthropic",
@@ -88,6 +93,7 @@ async def test_anthropic_async():
 
 @pytest.mark.integration
 @pytest.mark.external_api
+@pytest.mark.skipif(not model_settings.groq_api_key, reason="Groq API key not configured")
 def test_groq():
     provider = GroqProvider(
         name="groq",
@@ -101,6 +107,7 @@ def test_groq():
 @pytest.mark.integration
 @pytest.mark.external_api
 @pytest.mark.azure_basic
+@pytest.mark.skipif(not model_settings.azure_api_key, reason="Azure API key not configured")
 def test_azure():
     provider = AzureProvider(
         name="azure",
@@ -136,9 +143,9 @@ def test_azure():
 @pytest.mark.integration
 @pytest.mark.external_api
 @pytest.mark.gemini_basic
+@pytest.mark.skipif(not model_settings.gemini_api_key, reason="Google AI API key not configured")
 def test_googleai():
     api_key = model_settings.gemini_api_key
-    assert api_key is not None
     provider = GoogleAIProvider(
         name="google_ai",
         api_key=api_key,
@@ -156,9 +163,9 @@ def test_googleai():
 @pytest.mark.integration
 @pytest.mark.external_api
 @pytest.mark.gemini_basic
+@pytest.mark.skipif(not model_settings.gemini_api_key, reason="Google AI API key not configured")
 async def test_googleai_async():
     api_key = model_settings.gemini_api_key
-    assert api_key is not None
     provider = GoogleAIProvider(
         name="google_ai",
         api_key=api_key,
@@ -174,6 +181,7 @@ async def test_googleai_async():
 
 @pytest.mark.integration
 @pytest.mark.external_api
+@pytest.mark.skipif(not model_settings.google_cloud_project or not model_settings.google_cloud_location, reason="Google Cloud credentials not configured")
 def test_google_vertex():
     provider = GoogleVertexProvider(
         name="google_vertex",
@@ -191,6 +199,7 @@ def test_google_vertex():
 
 @pytest.mark.integration
 @pytest.mark.external_api
+@pytest.mark.skipif(not model_settings.together_api_key, reason="Together API key not configured")
 def test_together():
     provider = TogetherProvider(
         name="together",
@@ -213,6 +222,7 @@ def test_together():
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.external_api
+@pytest.mark.skipif(not model_settings.together_api_key, reason="Together API key not configured")
 async def test_together_async():
     provider = TogetherProvider(
         name="together",
@@ -249,6 +259,7 @@ async def test_together_async():
 @pytest.mark.integration
 @pytest.mark.external_api
 @pytest.mark.anthropic_basic
+@pytest.mark.skipif(not model_settings.anthropic_api_key, reason="Anthropic API key not configured")
 def test_custom_anthropic():
     provider = AnthropicProvider(
         name="custom_anthropic",

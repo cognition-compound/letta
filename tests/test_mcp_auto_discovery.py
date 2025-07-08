@@ -25,7 +25,7 @@ def mock_mcp_server():
     from letta.functions.mcp_client.types import MCPServerType
 
     return MCPServer(
-        id="server-12345678",
+        id="mcp_server-12345678",
         server_name="test-mcp-server",
         server_type=MCPServerType.SSE,
         server_url="https://test.example.com",
@@ -60,21 +60,21 @@ def mock_pydantic_tools():
     """Create mock Pydantic tools for testing."""
     return [
         PydanticTool(
-            id="tool-1-id",
+            id="tool-12345678",
             name="test_tool_1",
             tool_type=ToolType.EXTERNAL_MCP,
             source_code="def test_tool_1(): pass",
             json_schema={"name": "test_tool_1", "type": "function"},
         ),
         PydanticTool(
-            id="tool-2-id",
+            id="tool-23456789",
             name="test_tool_2",
             tool_type=ToolType.EXTERNAL_MCP,
             source_code="def test_tool_2(): pass",
             json_schema={"name": "test_tool_2", "type": "function"},
         ),
         PydanticTool(
-            id="tool-3-id",
+            id="tool-3456789a",
             name="test_tool_3",
             tool_type=ToolType.EXTERNAL_MCP,
             source_code="def test_tool_3(): pass",
@@ -201,7 +201,7 @@ class TestMCPAutoDiscovery:
                 # Mock tool manager
                 with patch.object(mcp_manager.tool_manager, "create_mcp_tool_async", new=AsyncMock()) as mock_create_tool:
                     mock_create_tool.return_value = PydanticTool(
-                        id="test-id",
+                        id="tool-12345678",
                         name="test_tool",
                         tool_type=ToolType.EXTERNAL_MCP,
                         source_code="def test_tool(): pass",
@@ -351,7 +351,7 @@ class TestMCPAutoDiscovery:
         # Create existing tools (including some that will become stale)
         existing_tools = [
             PydanticTool(
-                id="tool-stale-1",
+                id="tool-12345abc",
                 name="stale_tool_1",
                 tool_type=ToolType.EXTERNAL_MCP,
                 source_code="def stale_tool_1(): pass",
@@ -365,7 +365,7 @@ class TestMCPAutoDiscovery:
                 json_schema={"name": "test_tool_1", "type": "function"},
             ),
             PydanticTool(
-                id="tool-stale-2",
+                id="tool-23456def",
                 name="stale_tool_2",
                 tool_type=ToolType.EXTERNAL_MCP,
                 source_code="def stale_tool_2(): pass",
@@ -412,14 +412,14 @@ class TestMCPAutoDiscovery:
         # Create existing stale tools
         stale_tools = [
             PydanticTool(
-                id="tool-stale-1",
+                id="tool-12345abc",
                 name="stale_tool_1",
                 tool_type=ToolType.EXTERNAL_MCP,
                 source_code="def stale_tool_1(): pass",
                 json_schema={"name": "stale_tool_1", "type": "function"},
             ),
             PydanticTool(
-                id="tool-stale-2",
+                id="tool-23456def",
                 name="stale_tool_2",
                 tool_type=ToolType.EXTERNAL_MCP,
                 source_code="def stale_tool_2(): pass",
@@ -466,7 +466,7 @@ class TestMCPAutoDiscovery:
             # Mock query result
             mock_tool = Mock()
             mock_tool.to_pydantic.return_value = PydanticTool(
-                id="tool-1",
+                id="tool-12345678",
                 name="test_tool",
                 tool_type=ToolType.EXTERNAL_MCP,
                 source_code="def test_tool(): pass",

@@ -152,6 +152,18 @@ class MCPManager:
 
         return mcp_server
 
+    def _get_json_contains_condition(self, tag_to_find: str):
+        """Get database-appropriate JSON containment condition."""
+        from letta.settings import settings
+        from sqlalchemy import text
+        
+        if settings.letta_pg_uri_no_default:
+            # PostgreSQL: use JSONB containment operator
+            return text("tags::jsonb @> :tag_json"), f'["{tag_to_find}"]'
+        else:
+            # SQLite: use JSON_EXTRACT to check if tag exists in array
+            return text("EXISTS (SELECT 1 FROM json_each(tags) WHERE json_each.value = :tag_value)"), tag_to_find
+
     @enforce_types
     async def _get_existing_mcp_tools_async(self, mcp_server_name: str, actor: PydanticUser) -> List[PydanticTool]:
         """Get all MCP tools currently registered for this server."""
@@ -161,18 +173,17 @@ class MCPManager:
         from letta.orm.tool import Tool as ToolModel
 
         async with db_registry.async_session() as session:
-            # Query tools by MCP server tag and tool type
-            # Use PostgreSQL's native JSON containment operator (@>)
-            from sqlalchemy import text
-
             tag_to_find = f"{MCP_TOOL_TAG_NAME_PREFIX}:{mcp_server_name}"
-
+            
+            # Get database-appropriate JSON query condition
+            json_condition, param_value = self._get_json_contains_condition(tag_to_find)
+            
             result = await session.scalars(
                 select(ToolModel)
                 .where(ToolModel.tool_type == ToolType.EXTERNAL_MCP)
-                .where(text("tags::jsonb @> :tag_json"))
+                .where(json_condition)
                 .where(ToolModel.organization_id == actor.organization_id),
-                {"tag_json": f'["{tag_to_find}"]'},
+                {"tag_json": param_value, "tag_value": param_value},
             )
             tools = result.all()
             return [tool.to_pydantic() for tool in tools]
