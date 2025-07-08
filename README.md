@@ -1,3 +1,18 @@
+# 🔀 Cognition Compound Fork of Letta
+
+This is a custom fork of [Letta](https://github.com/letta-ai/letta) with enhanced features for production agent deployments:
+
+- **Unified Messaging**: Single `send()` API for all agent communication (user, agent-to-agent, group, broadcast)
+- **Async-First Architecture**: All inter-agent messaging is fire-and-forget for better performance
+- **Multimodal Support**: Native text and image handling in messages
+- **Modern Observability**: OpenTelemetry integration with optimized logging
+- **Built-in File Tools**: Enhanced file processing with type-aware chunking
+- **Database Optimization**: Connection pooling to reduce PostgreSQL overhead
+
+For fork-specific documentation, see `CLAUDE.md` and `docs/` directory.
+
+---
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/letta-ai/letta/refs/heads/main/assets/Letta-logo-RGB_GreyonTransparent_cropped_small.png">
