@@ -81,8 +81,13 @@ jobs:
           build-args: |
             LETTA_VERSION=${{ github.ref_name }}
             LETTA_ENVIRONMENT=PRODUCTION
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Registry-based caching with branch-specific tags
+          # More reliable than type=gha for GitHub Container Registry
+          cache-from: |
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ github.ref_name }}
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-main
+            type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ github.ref_name }},mode=max
           provenance: false
 
       - name: Generate artifact attestation
