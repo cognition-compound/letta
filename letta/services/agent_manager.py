@@ -1436,6 +1436,21 @@ class AgentManager:
                     sleeptime_group_to_delete = sleeptime_agent_group
 
             try:
+                # First check if any groups have this agent as their manager
+                from letta.orm.group import Group as GroupModel
+                from sqlalchemy import select
+                
+                groups_with_manager = await session.execute(
+                    select(GroupModel).where(GroupModel.manager_agent_id == agent_id)
+                )
+                managed_groups = groups_with_manager.scalars().all()
+                
+                if managed_groups:
+                    # Clear the manager_agent_id for these groups before deleting the agent
+                    for group in managed_groups:
+                        group.manager_agent_id = None
+                    await session.commit()
+                
                 if sleeptime_group_to_delete is not None:
                     await session.delete(sleeptime_group_to_delete)
                     await session.commit()

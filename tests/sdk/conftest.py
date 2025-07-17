@@ -91,7 +91,25 @@ def create_test_module(
         )
 
         # Add finalizer to ensure cleanup happens in the right order
-        request.addfinalizer(lambda: client.agents.delete(agent_id=agent.id))
+        # This finalizer will run AFTER all tests that use this fixture
+        def cleanup_agent():
+            # First, delete any groups that might have this agent as manager
+            try:
+                all_groups = client.groups.list()
+                for group in all_groups:
+                    if hasattr(group, 'manager_agent_id') and group.manager_agent_id == agent.id:
+                        client.groups.delete(group_id=group.id)
+            except Exception as e:
+                # Log but don't fail if group deletion fails
+                print(f"Warning: Failed to delete groups with manager agent {agent.id}: {e}")
+            
+            # Now safe to delete the agent
+            try:
+                client.agents.delete(agent_id=agent.id)
+            except Exception as e:
+                print(f"Warning: Failed to delete agent {agent.id}: {e}")
+        
+        request.addfinalizer(cleanup_agent)
 
         return agent
 
