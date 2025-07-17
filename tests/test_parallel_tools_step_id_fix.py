@@ -10,7 +10,7 @@ from letta.schemas.openai.chat_completion_response import UsageStatistics
 
 
 def test_create_messages_with_none_step_id():
-    """Test that messages are created without step_id when step_id is None."""
+    """Test that messages are created with None step_id when step_id is None."""
     
     # Create a test user
     actor = User(
@@ -27,7 +27,7 @@ def test_create_messages_with_none_step_id():
         stderr=[]
     )
     
-    # Call the function with step_id=None (as would happen with NoopStepManager)
+    # Call the function with step_id=None (as would happen in parallel execution with NoopStepManager)
     messages = create_letta_messages_from_llm_response(
         agent_id="agent-12345678",
         model="gpt-4",
@@ -40,14 +40,14 @@ def test_create_messages_with_none_step_id():
         timezone="UTC",
         actor=actor,
         continue_stepping=False,
-        step_id=None  # This is what happens with NoopStepManager
+        step_id=None  # This is what happens in parallel execution
     )
     
-    # Verify that messages don't have step_id set
+    # Verify that messages have step_id set to None
     for message in messages:
         assert message.step_id is None, f"Expected step_id to be None, but got {message.step_id}"
     
-    print("✅ Test passed: Messages created without step_id when using None")
+    print("✅ Test passed: Messages created with None step_id when step_id is None")
 
 
 def test_create_messages_with_valid_step_id():

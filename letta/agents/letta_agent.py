@@ -240,13 +240,10 @@ class LettaAgent(BaseAgent):
                 yield f"data: {stop_reason.model_dump_json()}\n\n"
                 break
 
-            # Generate step_id only if we're using a real StepManager
-            # NoopStepManager is a singleton, so check by class name
-            step_id = generate_step_id() if self.step_manager.__class__.__name__ != 'NoopStepManager' else None
+            step_id = generate_step_id()
             step_start = get_utc_timestamp_ns()
             agent_step_span = tracer.start_span("agent_step", start_time=step_start)
-            if step_id:
-                agent_step_span.set_attributes({"step_id": step_id})
+            agent_step_span.set_attributes({"step_id": step_id})
 
             request_data, response_data, current_in_context_messages, new_in_context_messages, valid_tool_names = (
                 await self._build_and_request_from_llm(
@@ -429,13 +426,10 @@ class LettaAgent(BaseAgent):
                 logger.info(f"Agent execution cancelled for run {self.current_run_id}")
                 break
 
-            # Generate step_id only if we're using a real StepManager
-            # NoopStepManager is a singleton, so check by class name
-            step_id = generate_step_id() if self.step_manager.__class__.__name__ != 'NoopStepManager' else None
+            step_id = generate_step_id()
             step_start = get_utc_timestamp_ns()
             agent_step_span = tracer.start_span("agent_step", start_time=step_start)
-            if step_id:
-                agent_step_span.set_attributes({"step_id": step_id})
+            agent_step_span.set_attributes({"step_id": step_id})
 
             # If dry run, build request data and return it without making LLM call
             if dry_run:
@@ -631,13 +625,10 @@ class LettaAgent(BaseAgent):
                 yield f"data: {stop_reason.model_dump_json()}\n\n"
                 break
 
-            # Generate step_id only if we're using a real StepManager
-            # NoopStepManager is a singleton, so check by class name
-            step_id = generate_step_id() if self.step_manager.__class__.__name__ != 'NoopStepManager' else None
+            step_id = generate_step_id()
             step_start = get_utc_timestamp_ns()
             agent_step_span = tracer.start_span("agent_step", start_time=step_start)
-            if step_id:
-                agent_step_span.set_attributes({"step_id": step_id})
+            agent_step_span.set_attributes({"step_id": step_id})
 
             (
                 request_data,
@@ -1140,6 +1131,8 @@ class LettaAgent(BaseAgent):
                     function_arguments = json.loads(result.tool_call.function.arguments)
                     
                     # Create messages for this tool call
+                    # Note: In parallel execution, we don't have logged_step, so we need to handle this properly
+                    # For now, we'll use None to avoid foreign key violations with NoopStepManager
                     tool_messages = create_letta_messages_from_llm_response(
                         agent_id=agent_state.id,
                         model=agent_state.llm_config.model,
@@ -1153,7 +1146,7 @@ class LettaAgent(BaseAgent):
                         actor=self.actor,
                         continue_stepping=continue_stepping,
                         reasoning_content=reasoning_content if result == parallel_summary.results[0] else None,  # Only add reasoning to first message
-                        step_id=step_id,
+                        step_id=None,  # TODO: This should be logged_step.id when we refactor step logging
                     )
                     all_messages.extend(tool_messages)
 
@@ -1298,22 +1291,20 @@ class LettaAgent(BaseAgent):
         )
 
         # 5.  Persist step + messages and propagate to jobs
-        # Log step only if we're using a real StepManager
-        if step_id is not None:
-            logged_step = await self.step_manager.log_step_async(
-                actor=self.actor,
-                agent_id=agent_state.id,
-                provider_name=agent_state.llm_config.model_endpoint_type,
-                provider_category=agent_state.llm_config.provider_category or "base",
-                model=agent_state.llm_config.model,
-                model_endpoint=agent_state.llm_config.model_endpoint,
-                context_window_limit=agent_state.llm_config.context_window,
-                usage=usage,
-                provider_id=None,
-                job_id=run_id if run_id else self.current_run_id,
-                step_id=step_id,
-                project_id=agent_state.project_id,
-            )
+        logged_step = await self.step_manager.log_step_async(
+            actor=self.actor,
+            agent_id=agent_state.id,
+            provider_name=agent_state.llm_config.model_endpoint_type,
+            provider_category=agent_state.llm_config.provider_category or "base",
+            model=agent_state.llm_config.model,
+            model_endpoint=agent_state.llm_config.model_endpoint,
+            context_window_limit=agent_state.llm_config.context_window,
+            usage=usage,
+            provider_id=None,
+            job_id=run_id if run_id else self.current_run_id,
+            step_id=step_id,
+            project_id=agent_state.project_id,
+        )
 
         tool_call_messages = create_letta_messages_from_llm_response(
             agent_id=agent_state.id,

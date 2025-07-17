@@ -277,11 +277,8 @@ def create_letta_messages_from_llm_response(
         )
         messages.append(heartbeat_system_message)
 
-    # Only set step_id if it's not None (i.e., when using a real StepManager, not NoopStepManager)
-    # This prevents foreign key constraint violations when using NoopStepManager
-    if step_id is not None:
-        for message in messages:
-            message.step_id = step_id
+    for message in messages:
+        message.step_id = step_id
 
     return messages
 
