@@ -2,6 +2,30 @@
 
 ## 🚀 Recent Updates
 
+### ✅ Upstream 0.8.14 and 0.8.15 Releases Merged (2025-01-17)
+**Successfully merged Letta 0.8.14 and 0.8.15 upstream releases** - Integrated latest features while preserving all custom implementations.
+
+**Key Upstream Changes:**
+- Version bumps to 0.8.14 and 0.8.15
+- Enhanced file processing with new `FileManager` and line chunker for better handling of small files
+- Added Pinecone support improvements and helper utilities
+- New token counter abstraction in context window calculator
+- Added database migration for direct source_id to files_agents relationship
+- System prompt improvements for file handling and context awareness
+- Various bug fixes and performance improvements
+
+**Custom Features Preserved:**
+- ✅ Custom logging decorators (`db_*_logger`, `service_method_logger`) maintained over new `trace_method`
+- ✅ Unified `send()` function implementation intact
+- ✅ Async-only agent communication architecture
+- ✅ Custom multimodal support for images in messages
+- ✅ All Docker optimizations and custom configurations
+
+**Merge Details:**
+- Resolved conflicts in `agent_manager.py` and `block_manager.py` preserving custom logging decorators
+- Integrated communication instructions into system prompt while maintaining upstream structure
+- No breaking changes to custom fork functionality
+
 ### ✅ FIXED: Agent-to-Agent Message Display in ADE (2025-01-07)
 **Fixed incorrect display of agent messages as assistant messages** - Agent-to-agent messages now correctly show as tool calls in the ADE, preserving transparency and debugging capabilities.
 
