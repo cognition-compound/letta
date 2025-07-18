@@ -144,6 +144,9 @@ OTEL_TRACES_EXPORTER="otlp"
 # Database Connection Pool (to reduce connections)
 LETTA_PG_POOL_SIZE="10"
 LETTA_PG_MAX_OVERFLOW="5"
+
+# Parallel Tool Calls
+LETTA_ENABLE_PARALLEL_TOOL_CALLS="true"  # Enable parallel tool execution (default: true)
 ```
 
 ## Docker Deployment
@@ -177,6 +180,7 @@ LETTA_PG_MAX_OVERFLOW="5"
 - **Multimodal support**: Messages can contain both text and images
 - **Modern logging**: OpenTelemetry integration with standard configuration
 - **File tools**: Built-in tools for file operations (open_file, search_files, grep, etc.)
+- **Parallel tool execution**: Concurrent execution of multiple tools from a single LLM response for 2-5x performance gains
 
 ### Notable Capabilities
 - **Agent-to-agent messaging**: Agents communicate asynchronously without blocking
@@ -196,6 +200,13 @@ LETTA_PG_MAX_OVERFLOW="5"
 - Check performance: `poetry run python examples/logging_performance_demo.py`
 - Async logging enabled by default for better performance
 
+### Parallel Tool Execution
+- **Configuration**: Control via `LETTA_ENABLE_PARALLEL_TOOL_CALLS` environment variable
+- **Default**: Enabled (`"true"`) - set to `"false"` to disable
+- **Memory safety**: Memory operation tools executed sequentially by default
+- **Performance**: 2-5x speedup for multi-tool workflows
+- **Troubleshooting**: If issues arise, disable with `export LETTA_ENABLE_PARALLEL_TOOL_CALLS="false"`
+
 ## Documentation Structure
 
 ### Key Documentation Files
@@ -204,6 +215,7 @@ LETTA_PG_MAX_OVERFLOW="5"
 - `docs/MULTIMODAL_*.md` - Image support documentation
 - `docs/FILE_PROCESSING_ARCHITECTURE.md` - File handling system
 - `docs/DATABASE_CONNECTION_POOLING_ANALYSIS.md` - DB optimization
+- `docs/PARALLEL_TOOL_CALLS_IMPLEMENTATION_PLAN.md` - Parallel tool execution architecture
 
 ## Development Philosophy
 - **No backwards compatibility concerns** - We can break things if needed

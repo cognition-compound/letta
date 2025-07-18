@@ -1,3 +1,4 @@
+import os
 import warnings
 from typing import Generator, List, Optional, Union
 
@@ -591,7 +592,9 @@ def prepare_openai_payload(chat_completion_request: ChatCompletionRequest):
 
     # add check otherwise will cause error: "Invalid value for 'parallel_tool_calls': 'parallel_tool_calls' is only allowed when 'tools' are specified."
     if chat_completion_request.tools is not None:
-        data["parallel_tool_calls"] = False
+        # Enable parallel tool calls based on environment variable
+        enable_parallel = os.getenv("LETTA_ENABLE_PARALLEL_TOOL_CALLS", "true").lower() == "true"
+        data["parallel_tool_calls"] = enable_parallel
 
     # If functions == None, strip from the payload
     if "functions" in data and data["functions"] is None:

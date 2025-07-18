@@ -232,57 +232,6 @@ class MessageManager:
 
     @enforce_types
     @trace_method
-    def update_message_by_letta_message(
-        self, message_id: str, letta_message_update: LettaMessageUpdateUnion, actor: PydanticUser
-    ) -> PydanticMessage:
-        """
-        Updated the underlying messages table giving an update specified to the user-facing LettaMessage
-        """
-        message = self.get_message_by_id(message_id=message_id, actor=actor)
-        if letta_message_update.message_type == "assistant_message":
-            # modify the tool call for send_message or send
-            # Handle parallel tool calls by finding the first send_message or send tool call
-            tool_call_index = -1
-            for i, tool_call in enumerate(message.tool_calls or []):
-                if tool_call.function.name in ["send_message", "send"]:
-                    tool_call_index = i
-                    break
-            
-            if tool_call_index == -1:
-                raise ValueError(f"No send_message or send tool call found in message {message_id}")
-            
-            tool_call = message.tool_calls[tool_call_index]
-            
-            original_args = json.loads(tool_call.function.arguments)
-            # Both send_message and send use "message" parameter
-            original_args["message"] = letta_message_update.content  # override the assistant message
-                
-            update_tool_call = tool_call.__deepcopy__()
-            update_tool_call.function.arguments = json.dumps(original_args)
-
-            # Update only the specific tool call in the list
-            updated_tool_calls = message.tool_calls[:]
-            updated_tool_calls[tool_call_index] = update_tool_call
-            update_message = MessageUpdate(tool_calls=updated_tool_calls)
-        elif letta_message_update.message_type == "reasoning_message":
-            update_message = MessageUpdate(content=letta_message_update.reasoning)
-        elif letta_message_update.message_type == "user_message" or letta_message_update.message_type == "system_message":
-            update_message = MessageUpdate(content=letta_message_update.content)
-        else:
-            raise ValueError(f"Unsupported message type for modification: {letta_message_update.message_type}")
-
-        message = self.update_message_by_id(message_id=message_id, message_update=update_message, actor=actor)
-
-        # convert back to LettaMessage
-        for letta_msg in message.to_letta_messages(use_assistant_message=True):
-            if letta_msg.message_type == letta_message_update.message_type:
-                return letta_msg
-
-        # raise error if message type got modified
-        raise ValueError(f"Message type got modified: {letta_message_update.message_type}")
-
-    @enforce_types
-    @trace_method
     def update_message_by_id(self, message_id: str, message_update: MessageUpdate, actor: PydanticUser) -> PydanticMessage:
         """
         Updates an existing record in the database with values from the provided record object.
