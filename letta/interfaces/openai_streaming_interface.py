@@ -10,7 +10,7 @@ from letta.constants import DEFAULT_MESSAGE_TOOL, DEFAULT_MESSAGE_TOOL_KWARG
 from letta.helpers.datetime_helpers import get_utc_timestamp_ns, ns_to_ms
 from letta.llm_api.openai_client import is_openai_reasoning_model
 from letta.log import get_logger
-from letta.otel.context import get_ctx_attributes
+from letta.otel.context import get_filtered_ctx_attributes
 from letta.otel.metric_registry import MetricRegistry
 from letta.schemas.letta_message import AssistantMessage, LettaMessage, ReasoningMessage, ToolCallDelta, ToolCallMessage
 from letta.schemas.letta_message_content import OmittedReasoningContent, TextContent
@@ -109,7 +109,7 @@ class OpenAIStreamingInterface:
                         ttft_span.add_event(
                             name="openai_time_to_first_token_ms", attributes={"openai_time_to_first_token_ms": ns_to_ms(ttft_ns)}
                         )
-                        metric_attributes = get_ctx_attributes()
+                        metric_attributes = get_filtered_ctx_attributes()
                         metric_attributes["model.name"] = chunk.model
                         MetricRegistry().ttft_ms_histogram.record(ns_to_ms(ttft_ns), metric_attributes)
 

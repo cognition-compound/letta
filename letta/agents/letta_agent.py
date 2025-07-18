@@ -267,7 +267,7 @@ class LettaAgent(BaseAgent):
             usage.prompt_tokens += response.usage.prompt_tokens
             usage.total_tokens += response.usage.total_tokens
             MetricRegistry().message_output_tokens.record(
-                response.usage.completion_tokens, dict(get_ctx_attributes(), **{"model.name": agent_state.llm_config.model})
+                response.usage.completion_tokens, dict(get_filtered_ctx_attributes(), **{"model.name": agent_state.llm_config.model})
             )
 
             if not response.choices[0].message.tool_calls:
@@ -458,7 +458,7 @@ class LettaAgent(BaseAgent):
             usage.total_tokens += response.usage.total_tokens
             usage.run_ids = [run_id] if run_id else None
             MetricRegistry().message_output_tokens.record(
-                response.usage.completion_tokens, dict(get_ctx_attributes(), **{"model.name": agent_state.llm_config.model})
+                response.usage.completion_tokens, dict(get_filtered_ctx_attributes(), **{"model.name": agent_state.llm_config.model})
             )
 
             if not response.choices[0].message.tool_calls:
@@ -674,7 +674,7 @@ class LettaAgent(BaseAgent):
                     now = get_utc_timestamp_ns()
                     ttft_ns = now - request_start_timestamp_ns
                     request_span.add_event(name="time_to_first_token_ms", attributes={"ttft_ms": ns_to_ms(ttft_ns)})
-                    metric_attributes = get_ctx_attributes()
+                    metric_attributes = get_filtered_ctx_attributes()
                     metric_attributes["model.name"] = agent_state.llm_config.model
                     MetricRegistry().ttft_ms_histogram.record(ns_to_ms(ttft_ns), metric_attributes)
                     first_chunk = False
@@ -691,7 +691,7 @@ class LettaAgent(BaseAgent):
             usage.prompt_tokens += interface.input_tokens
             usage.total_tokens += interface.input_tokens + interface.output_tokens
             MetricRegistry().message_output_tokens.record(
-                interface.output_tokens, dict(get_ctx_attributes(), **{"model.name": agent_state.llm_config.model})
+                interface.output_tokens, dict(get_filtered_ctx_attributes(), **{"model.name": agent_state.llm_config.model})
             )
 
             # log LLM request time
@@ -699,7 +699,7 @@ class LettaAgent(BaseAgent):
             agent_step_span.add_event(name="llm_request_ms", attributes={"duration_ms": llm_request_ms})
             MetricRegistry().llm_execution_time_ms_histogram.record(
                 llm_request_ms,
-                dict(get_ctx_attributes(), **{"model.name": agent_state.llm_config.model}),
+                dict(get_filtered_ctx_attributes(), **{"model.name": agent_state.llm_config.model}),
             )
 
             # Process resulting stream content
@@ -834,7 +834,7 @@ class LettaAgent(BaseAgent):
                     response = await llm_client.request_async(request_data, agent_state.llm_config)
                 MetricRegistry().llm_execution_time_ms_histogram.record(
                     timer.elapsed_ms,
-                    dict(get_ctx_attributes(), **{"model.name": agent_state.llm_config.model}),
+                    dict(get_filtered_ctx_attributes(), **{"model.name": agent_state.llm_config.model}),
                 )
                 agent_step_span.add_event(name="llm_request_ms", attributes={"duration_ms": timer.elapsed_ms})
 

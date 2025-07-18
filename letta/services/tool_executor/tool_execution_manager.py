@@ -119,7 +119,7 @@ class ToolExecutionManager:
 
             def _metrics_callback(exec_time_ms: int, exc):
                 return MetricRegistry().tool_execution_time_ms_histogram.record(
-                    exec_time_ms, dict(get_ctx_attributes(), **{"tool.name": tool.name})
+                    exec_time_ms, dict(get_filtered_ctx_attributes(), **{"tool.name": tool.name})
                 )
 
             async with AsyncTimer(callback_func=_metrics_callback):

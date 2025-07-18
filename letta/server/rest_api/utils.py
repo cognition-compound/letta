@@ -24,7 +24,7 @@ from letta.errors import ContextWindowExceededError, RateLimitExceededError
 from letta.helpers.datetime_helpers import get_utc_time, get_utc_timestamp_ns, ns_to_ms
 from letta.helpers.message_helper import convert_message_creates_to_messages
 from letta.log import get_logger
-from letta.otel.context import get_ctx_attributes
+from letta.otel.context import get_filtered_ctx_attributes
 from letta.otel.metric_registry import MetricRegistry
 from letta.otel.tracing import tracer
 from letta.schemas.enums import MessageRole
@@ -97,7 +97,7 @@ async def sse_async_generator(
                 ttft_ns = now - request_start_timestamp_ns
                 ttft_span.add_event(name="time_to_first_token_ms", attributes={"ttft_ms": ns_to_ms(ttft_ns)})
                 ttft_span.end()
-                metric_attributes = get_ctx_attributes()
+                metric_attributes = get_filtered_ctx_attributes()
                 if llm_config:
                     metric_attributes["model.name"] = llm_config.model
                 MetricRegistry().ttft_ms_histogram.record(ns_to_ms(ttft_ns), metric_attributes)
