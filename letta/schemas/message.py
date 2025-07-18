@@ -896,16 +896,88 @@ class Message(BaseMessage):
                     if isinstance(content, TextContent):
                         content_parts.append({"type": "text", "text": content.text})
                     elif isinstance(content, ImageContent):
-                        content_parts.append(
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "data": content.source.data,
-                                    "media_type": content.source.media_type,
-                                },
-                            }
-                        )
+                        # Import the image source types
+                        from letta.schemas.letta_message_content import Base64Image, LettaImage, UrlImage
+                        
+                        if isinstance(content.source, Base64Image):
+                            # Base64 encoded image - use directly
+                            content_parts.append(
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "data": content.source.data,
+                                        "media_type": content.source.media_type,
+                                    },
+                                }
+                            )
+                        elif isinstance(content.source, LettaImage):
+                            # Letta image with optional data
+                            if content.source.data and content.source.media_type:
+                                content_parts.append(
+                                    {
+                                        "type": "image",
+                                        "source": {
+                                            "type": "base64",
+                                            "data": content.source.data,
+                                            "media_type": content.source.media_type,
+                                        },
+                                    }
+                                )
+                            else:
+                                # No data available, use text placeholder
+                                # Anthropic doesn't support URL images, so we use text
+                                content_parts.append({"type": "text", "text": f"[Image: letta://file/{content.source.file_id}]"})
+                        elif isinstance(content.source, UrlImage):
+                            # URL image - Anthropic only supports base64
+                            url = content.source.url
+                            if url.startswith("data:"):
+                                # Data URL - extract base64 data
+                                # Parse data URL format: data:[<mediatype>][;base64],<data>
+                                import re
+                                match = re.match(r'data:([^;]+);base64,(.+)', url)
+                                if match:
+                                    media_type, base64_data = match.groups()
+                                    content_parts.append(
+                                        {
+                                            "type": "image",
+                                            "source": {
+                                                "type": "base64",
+                                                "data": base64_data,
+                                                "media_type": media_type,
+                                            },
+                                        }
+                                    )
+                                else:
+                                    content_parts.append({"type": "text", "text": f"[Invalid data URL: {url[:50]}...]"})
+                            elif url.startswith(("http://", "https://")):
+                                # HTTP/HTTPS URL - need to fetch and convert
+                                import base64
+                                import urllib.request
+                                from urllib.error import URLError
+                                
+                                try:
+                                    with urllib.request.urlopen(url, timeout=5) as response:
+                                        image_data = response.read()
+                                        base64_data = base64.b64encode(image_data).decode('utf-8')
+                                        # Determine MIME type from response headers or URL
+                                        content_type = response.headers.get('Content-Type', 'image/jpeg')
+                                        content_parts.append(
+                                            {
+                                                "type": "image",
+                                                "source": {
+                                                    "type": "base64",
+                                                    "data": base64_data,
+                                                    "media_type": content_type,
+                                                },
+                                            }
+                                        )
+                                except (URLError, Exception) as e:
+                                    # Failed to fetch, use text placeholder
+                                    content_parts.append({"type": "text", "text": f"[Failed to load image from {url}]"})
+                            else:
+                                # Unknown scheme, use text placeholder
+                                content_parts.append({"type": "text", "text": f"[Image: {url}]"})
                     else:
                         raise ValueError(f"Unsupported content type: {content.type}")
 

@@ -510,5 +510,137 @@ class TestBackwardsCompatibility:
         assert message.content[0].text == "Simple text message"
 
 
+class TestProviderConversionWithURLImages:
+    """Test provider-specific conversions with HTTP/HTTPS URL images"""
+
+    def test_convert_http_url_to_anthropic(self):
+        """Test converting HTTP image URL to Anthropic format"""
+        message = Message(
+            role=MessageRole.user,
+            content=[
+                TextContent(text="Check this image"),
+                ImageContent(image_url="https://invalid-domain-that-should-not-exist.invalid/image.jpg"),
+            ],
+        )
+
+        # Should handle URL properly without crashing
+        anthropic_msg = message.to_anthropic_dict()
+        
+        # Check structure
+        assert isinstance(anthropic_msg["content"], list)
+        assert len(anthropic_msg["content"]) == 2
+        
+        # First part should be text
+        assert anthropic_msg["content"][0]["type"] == "text"
+        assert anthropic_msg["content"][0]["text"] == "Check this image"
+        
+        # Second part should be text placeholder since URL fetch will fail
+        assert anthropic_msg["content"][1]["type"] == "text"
+        assert "Failed to load image" in anthropic_msg["content"][1]["text"]
+
+    def test_convert_data_url_to_anthropic(self):
+        """Test converting data URL to Anthropic format"""
+        message = Message(
+            role=MessageRole.user,
+            content=[
+                ImageContent(image_url="data:image/jpeg;base64,/9j/4AAQSkZJRg=="),
+            ],
+        )
+
+        anthropic_msg = message.to_anthropic_dict()
+        
+        # Should extract base64 data from data URL
+        assert len(anthropic_msg["content"]) == 1
+        img_content = anthropic_msg["content"][0]
+        assert img_content["type"] == "image"
+        assert img_content["source"]["type"] == "base64"
+        assert img_content["source"]["data"] == "/9j/4AAQSkZJRg=="
+        assert img_content["source"]["media_type"] == "image/jpeg"
+
+    def test_convert_mixed_images_to_anthropic(self):
+        """Test converting mixed image types to Anthropic format"""
+        message = Message(
+            role=MessageRole.user,
+            content=[
+                TextContent(text="Multiple images:"),
+                ImageContent(image_url="data:image/png;base64,iVBORw0KGg=="),
+                ImageContent(image_url="https://example.com/image.jpg"),
+                ImageContent(image_url="ftp://example.com/image.jpg"),
+            ],
+        )
+
+        anthropic_msg = message.to_anthropic_dict()
+        
+        assert len(anthropic_msg["content"]) == 4
+        
+        # Text
+        assert anthropic_msg["content"][0]["type"] == "text"
+        
+        # Base64 image from data URL
+        assert anthropic_msg["content"][1]["type"] == "image"
+        assert anthropic_msg["content"][1]["source"]["data"] == "iVBORw0KGg=="
+        
+        # HTTP URL - should be text placeholder (fetch will fail)
+        assert anthropic_msg["content"][2]["type"] == "text"
+        assert "Failed to load image" in anthropic_msg["content"][2]["text"] or "Image:" in anthropic_msg["content"][2]["text"]
+        
+        # FTP URL - should be text placeholder
+        assert anthropic_msg["content"][3]["type"] == "text"
+        assert "Image: ftp://example.com/image.jpg" in anthropic_msg["content"][3]["text"]
+
+    def test_convert_http_url_to_google_ai(self):
+        """Test converting HTTP URL to Google AI format"""
+        message = Message(
+            role=MessageRole.user,
+            content=[
+                ImageContent(image_url="https://example.com/test.jpg"),
+            ],
+        )
+
+        google_msg = message.to_google_ai_dict()
+        
+        # Should attempt to fetch and fall back to text
+        assert len(google_msg["parts"]) == 1
+        # Either inline_data (if fetch succeeds) or text (if fails)
+        assert "text" in google_msg["parts"][0] or "inline_data" in google_msg["parts"][0]
+
+    def test_letta_image_conversion(self):
+        """Test converting LettaImage to different formats"""
+        # This would require creating a LettaImage source, which needs the import
+        from letta.schemas.letta_message_content import ImageContent, LettaImage
+        
+        # Create message with LettaImage that has data
+        letta_source = LettaImage(
+            file_id="test-file-123",
+            media_type="image/jpeg",
+            data="base64data"
+        )
+        message = Message(
+            role=MessageRole.user,
+            content=[ImageContent(source=letta_source)],
+        )
+
+        # Test Anthropic conversion
+        anthropic_msg = message.to_anthropic_dict()
+        assert anthropic_msg["content"][0]["type"] == "image"
+        assert anthropic_msg["content"][0]["source"]["data"] == "base64data"
+
+        # Test Google AI conversion
+        google_msg = message.to_google_ai_dict()
+        assert google_msg["parts"][0]["inline_data"]["data"] == "base64data"
+
+        # Create message with LettaImage without data
+        letta_source_no_data = LettaImage(file_id="test-file-456")
+        message_no_data = Message(
+            role=MessageRole.user,
+            content=[ImageContent(source=letta_source_no_data)],
+        )
+
+        # Should use placeholder
+        anthropic_msg_no_data = message_no_data.to_anthropic_dict()
+        assert anthropic_msg_no_data["content"][0]["type"] == "text"
+        assert "letta://file/test-file-456" in anthropic_msg_no_data["content"][0]["text"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
