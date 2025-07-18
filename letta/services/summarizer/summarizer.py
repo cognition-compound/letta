@@ -121,8 +121,20 @@ class Summarizer:
             logger.debug("Not forcing summarization, returning in-context messages as is.")
             return all_in_context_messages, False
 
+        # Check if summarizer_agent is available, fallback to static buffer if not
+        if self.summarizer_agent is None:
+            logger.warning(
+                "PARTIAL_EVICT_MESSAGE_BUFFER mode requires a summarizer_agent, but none is available. "
+                "Falling back to STATIC_MESSAGE_BUFFER mode. This typically happens when OpenAI API key is not configured."
+            )
+            return self._static_buffer_summarization(
+                in_context_messages,
+                new_letta_messages,
+                force=force,
+                clear=clear,
+            )
+
         # Very ugly code to pull LLMConfig etc from the SummarizerAgent if we're not using it for anything else
-        assert self.summarizer_agent is not None
 
         # First step: determine how many messages to retain
         total_message_count = len(all_in_context_messages)

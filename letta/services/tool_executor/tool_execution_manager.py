@@ -9,7 +9,7 @@ from letta.constants import FUNCTION_RETURN_VALUE_TRUNCATED
 from letta.helpers.datetime_helpers import AsyncTimer
 from letta.log import get_logger
 from letta.orm.enums import ToolType
-from letta.otel.context import get_ctx_attributes
+from letta.otel.context import get_ctx_attributes, get_filtered_ctx_attributes
 from letta.otel.metric_registry import MetricRegistry
 from letta.otel.tracing import trace_method
 from letta.schemas.agent import AgentState
@@ -152,7 +152,7 @@ class ToolExecutionManager:
             metric_attrs = {"tool.name": tool.name, "tool.execution_success": status == "success"}
             if status == "error" and step_id:
                 metric_attrs["step.id"] = step_id
-            MetricRegistry().tool_execution_counter.add(1, dict(get_ctx_attributes(), **metric_attrs))
+            MetricRegistry().tool_execution_counter.add(1, dict(get_filtered_ctx_attributes(), **metric_attrs))
 
     @trace_method
     async def execute_tools_parallel_async(
@@ -273,7 +273,7 @@ class ToolExecutionManager:
             }
             if not result.success_flag and step_id:
                 metric_attrs["step.id"] = step_id
-            MetricRegistry().tool_execution_counter.add(1, dict(get_ctx_attributes(), **metric_attrs))
+            MetricRegistry().tool_execution_counter.add(1, dict(get_filtered_ctx_attributes(), **metric_attrs))
 
         return ParallelExecutionSummary(
             results=parallel_results,

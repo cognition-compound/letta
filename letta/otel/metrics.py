@@ -17,7 +17,7 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
 from letta.helpers.datetime_helpers import ns_to_ms
 from letta.log import get_logger
-from letta.otel.context import add_ctx_attribute, get_ctx_attributes
+from letta.otel.context import add_ctx_attribute, get_ctx_attributes, get_filtered_ctx_attributes
 from typing import Any
 
 
@@ -116,7 +116,7 @@ def _record_endpoint_metrics(
             "endpoint_path": endpoint_name,
             "method": request.method,
             "status_code": status_code,
-            **get_ctx_attributes(),
+            **get_filtered_ctx_attributes(),
         }
         from letta.otel.metric_registry import MetricRegistry
 

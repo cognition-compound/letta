@@ -23,3 +23,9 @@ def add_ctx_attribute(key: str, value: Any):
 def get_ctx_attributes() -> Dict[str, Any]:
     """Get all attributes from current context"""
     return request_attributes.get()
+
+
+def get_filtered_ctx_attributes() -> Dict[str, Any]:
+    """Get all attributes from current context, filtering out None values"""
+    attrs = request_attributes.get()
+    return {k: v for k, v in attrs.items() if v is not None}

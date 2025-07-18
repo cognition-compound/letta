@@ -31,7 +31,7 @@ from letta.llm_api.llm_client_base import LLMClientBase
 from letta.local_llm.constants import INNER_THOUGHTS_KWARG
 from letta.log import get_logger, create_lazy_context, lazy_log_enabled
 from letta.orm.enums import ToolType
-from letta.otel.context import get_ctx_attributes
+from letta.otel.context import get_ctx_attributes, get_filtered_ctx_attributes
 from letta.otel.metric_registry import MetricRegistry
 from letta.otel.tracing import log_event, trace_method, tracer
 from letta.schemas.agent import AgentState, UpdateAgent
@@ -355,7 +355,7 @@ class LettaAgent(BaseAgent):
                 if include_return_message_types is None or message.message_type in include_return_message_types:
                     yield f"data: {message.model_dump_json()}\n\n"
 
-            MetricRegistry().step_execution_time_ms_histogram.record(get_utc_timestamp_ns() - step_start, get_ctx_attributes())
+            MetricRegistry().step_execution_time_ms_histogram.record(get_utc_timestamp_ns() - step_start, get_filtered_ctx_attributes())
 
             if not should_continue:
                 break
@@ -536,7 +536,7 @@ class LettaAgent(BaseAgent):
                 ),
             )
 
-            MetricRegistry().step_execution_time_ms_histogram.record(get_utc_timestamp_ns() - step_start, get_ctx_attributes())
+            MetricRegistry().step_execution_time_ms_histogram.record(get_utc_timestamp_ns() - step_start, get_filtered_ctx_attributes())
 
             if not should_continue:
                 break
@@ -777,7 +777,7 @@ class LettaAgent(BaseAgent):
                     yield f"data: {tool_return.model_dump_json()}\n\n"
 
             # TODO (cliandy): consolidate and expand with trace
-            MetricRegistry().step_execution_time_ms_histogram.record(get_utc_timestamp_ns() - step_start, get_ctx_attributes())
+            MetricRegistry().step_execution_time_ms_histogram.record(get_utc_timestamp_ns() - step_start, get_filtered_ctx_attributes())
 
             if not should_continue:
                 break

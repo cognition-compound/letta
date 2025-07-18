@@ -19,7 +19,7 @@ from letta.groups.sleeptime_multi_agent_v2 import SleeptimeMultiAgentV2
 from letta.helpers.datetime_helpers import get_utc_timestamp_ns
 from letta.log import get_logger
 from letta.orm.errors import NoResultFound
-from letta.otel.context import get_ctx_attributes
+from letta.otel.context import get_ctx_attributes, get_filtered_ctx_attributes
 from letta.otel.metric_registry import MetricRegistry
 from letta.schemas.agent import AgentState, AgentType, CreateAgent, UpdateAgent
 from letta.schemas.block import Block, BlockUpdate
@@ -692,7 +692,7 @@ async def send_message(
     This endpoint accepts a message from a user and processes it through the agent.
     """
     request_start_timestamp_ns = get_utc_timestamp_ns()
-    MetricRegistry().user_message_counter.add(1, get_ctx_attributes())
+    MetricRegistry().user_message_counter.add(1, get_filtered_ctx_attributes())
 
     actor = await server.user_manager.get_actor_or_default_async(actor_id=actor_id)
     # TODO: This is redundant, remove soon
@@ -821,7 +821,7 @@ async def send_message_streaming(
     It will stream the steps of the response always, and stream the tokens if 'stream_tokens' is set to True.
     """
     request_start_timestamp_ns = get_utc_timestamp_ns()
-    MetricRegistry().user_message_counter.add(1, get_ctx_attributes())
+    MetricRegistry().user_message_counter.add(1, get_filtered_ctx_attributes())
 
     actor = await server.user_manager.get_actor_or_default_async(actor_id=actor_id)
     # TODO: This is redundant, remove soon
@@ -1093,7 +1093,7 @@ async def send_message_async(
     This is "asynchronous" in the sense that it's a background job and explicitly must be fetched by the run ID.
     This is more like `send_message_job`
     """
-    MetricRegistry().user_message_counter.add(1, get_ctx_attributes())
+    MetricRegistry().user_message_counter.add(1, get_filtered_ctx_attributes())
     actor = await server.user_manager.get_actor_or_default_async(actor_id=actor_id)
 
     # Create a new job
