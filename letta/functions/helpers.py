@@ -328,6 +328,13 @@ def fire_and_forget_send_to_agent(
                             if False, calls server.send_message_to_agent directly.
     """
     server = get_letta_server()
+    
+    # Defensive check: ensure other_agent_id is a string
+    if isinstance(other_agent_id, list):
+        sender_agent.logger.warning(f"{log_prefix} other_agent_id was passed as a list {other_agent_id}, extracting first element")
+        if len(other_agent_id) == 0:
+            raise ValueError("other_agent_id list is empty")
+        other_agent_id = other_agent_id[0]
 
     # 1) Validate the target agent (raises ValueError if not in same org)
     try:

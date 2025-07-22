@@ -68,6 +68,16 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
 
     async def _process_agent(self, agent_id: str, message: str) -> Dict[str, Any]:
         from letta.agents.letta_agent import LettaAgent
+        
+        # Log and validate agent_id
+        logger.debug(f"_process_agent called with agent_id={agent_id!r} (type: {type(agent_id).__name__})")
+        
+        # Defensive check
+        if isinstance(agent_id, list):
+            logger.warning(f"agent_id was passed as a list {agent_id}, extracting first element")
+            if len(agent_id) == 0:
+                raise ValueError("agent_id list is empty")
+            agent_id = agent_id[0]
 
         try:
             letta_agent = LettaAgent(
@@ -99,6 +109,16 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
 
     async def send_message_to_agent_async(self, agent_state: AgentState, message: str, other_agent_id: str) -> str:
         """Send message to agent without waiting for response."""
+        
+        # Log the agent_id being used for debugging
+        logger.debug(f"send_message_to_agent_async called with other_agent_id={other_agent_id!r} (type: {type(other_agent_id).__name__})")
+        
+        # Defensive check: ensure other_agent_id is a string
+        if isinstance(other_agent_id, list):
+            logger.warning(f"other_agent_id was passed as a list {other_agent_id}, extracting first element")
+            if len(other_agent_id) == 0:
+                raise ValueError("other_agent_id list is empty")
+            other_agent_id = other_agent_id[0]
 
         # Build the prefixed system message
         prefixed = f"[Message from agent '{agent_state.id}'] {message}"

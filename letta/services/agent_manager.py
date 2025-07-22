@@ -1268,6 +1268,16 @@ class AgentManager:
     @trace_method
     def get_agent_by_id(self, agent_id: str, actor: PydanticUser) -> PydanticAgentState:
         """Fetch an agent by its ID."""
+        
+        # Defensive check: If agent_id is accidentally passed as a list, extract the first element
+        if isinstance(agent_id, list):
+            if len(agent_id) == 0:
+                raise ValueError("agent_id list is empty")
+            elif len(agent_id) > 1:
+                raise ValueError(f"Multiple agent_ids provided when only one expected: {agent_id}")
+            agent_id = agent_id[0]
+            logger.warning(f"agent_id was passed as a list [{agent_id}], extracting single value")
+        
         with db_registry.session() as session:
             agent = AgentModel.read(db_session=session, identifier=agent_id, actor=actor)
             return agent.to_pydantic()
@@ -1282,6 +1292,15 @@ class AgentManager:
         include_relationships: Optional[List[str]] = None,
     ) -> PydanticAgentState:
         """Fetch an agent by its ID."""
+        
+        # Defensive check: If agent_id is accidentally passed as a list, extract the first element
+        if isinstance(agent_id, list):
+            if len(agent_id) == 0:
+                raise ValueError("agent_id list is empty")
+            elif len(agent_id) > 1:
+                raise ValueError(f"Multiple agent_ids provided when only one expected: {agent_id}")
+            agent_id = agent_id[0]
+            logger.warning(f"agent_id was passed as a list [{agent_id}], extracting single value")
 
         async with db_registry.async_session() as session:
             agent = await AgentModel.read_async(db_session=session, identifier=agent_id, actor=actor)

@@ -113,6 +113,13 @@ def send_message_to_agent_async(self: "Agent", message: str, other_agent_id: str
     """
     if os.getenv("LETTA_ENVIRONMENT") == "PRODUCTION":
         raise RuntimeError("This tool is not allowed to be run on Letta Cloud.")
+    
+    # Defensive check: ensure other_agent_id is a string
+    if isinstance(other_agent_id, list):
+        self.logger.warning(f"other_agent_id was passed as a list {other_agent_id}, extracting first element")
+        if len(other_agent_id) == 0:
+            raise ValueError("other_agent_id list is empty")
+        other_agent_id = other_agent_id[0]
 
     # Create clean messages with sender context in system message
     messages = [
