@@ -7379,19 +7379,19 @@ url = ["furl (>=0.4.1)"]
 
 [[package]]
 name = "sqlmodel"
-version = "0.0.16"
+version = "0.0.24"
 description = "SQLModel, SQL databases in Python, designed for simplicity, compatibility, and robustness."
 optional = false
-python-versions = ">=3.7,<4.0"
+python-versions = ">=3.7"
 groups = ["main"]
 files = [
-    {file = "sqlmodel-0.0.16-py3-none-any.whl", hash = "sha256:b972f5d319580d6c37ecc417881f6ec4d1ad3ed3583d0ac0ed43234a28bf605a"},
-    {file = "sqlmodel-0.0.16.tar.gz", hash = "sha256:966656f18a8e9a2d159eb215b07fb0cf5222acfae3362707ca611848a8a06bd1"},
+    {file = "sqlmodel-0.0.24-py3-none-any.whl", hash = "sha256:6778852f09370908985b667d6a3ab92910d0d5ec88adcaf23dbc242715ff7193"},
+    {file = "sqlmodel-0.0.24.tar.gz", hash = "sha256:cc5c7613c1a5533c9c7867e1aab2fd489a76c9e8a061984da11b4e613c182423"},
 ]
 
 [package.dependencies]
 pydantic = ">=1.10.13,<3.0.0"
-SQLAlchemy = ">=2.0.0,<2.1.0"
+SQLAlchemy = ">=2.0.14,<2.1.0"
 
 [[package]]
 name = "sse-starlette"
@@ -8613,4 +8613,4 @@ tests = ["wikipedia"]
 [metadata]
 lock-version = "2.1"
 python-versions = "<3.14,>=3.10"
-content-hash = "05f01e334bbec867a24ae3b78db9d92e4e240a89e07cfdd4d591f81bddcc14da"
+content-hash = "944963553545fbbe8b0467c6f2719ea489a79b2a6d6959996320331eef5adc60"

@@ -41,7 +41,7 @@ pexpect = {version = "^4.9.0", optional = true}
 pyright = {version = "^1.1.347", optional = true}
 #pymilvus = {version ="^2.4.3", optional = true}
 python-box = "^7.1.1"
-sqlmodel = "^0.0.16"
+sqlmodel = "^0.0.24"
 autoflake = {version = "^2.3.0", optional = true}
 python-multipart = "^0.0.19"
 sqlalchemy-utils = "^0.41.2"
