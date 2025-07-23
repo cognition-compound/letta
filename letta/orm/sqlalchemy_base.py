@@ -754,16 +754,20 @@ class SqlalchemyBase(CommonSqlalchemyMetaMixins, Base):
 
         try:
             db_session.add_all(items)
-            if no_commit:
-                await db_session.flush()
-            else:
+            
+            # Flush to ensure IDs are generated
+            await db_session.flush()
+            
+            # Capture IDs before commit (when objects will expire)
+            item_ids = [item.id for item in items]
+            
+            if not no_commit:
                 await db_session.commit()
 
             if no_refresh:
                 return items
             else:
                 # Re-query the objects to get them with relationships loaded
-                item_ids = [item.id for item in items]
                 query = select(cls).where(cls.id.in_(item_ids))
                 if hasattr(cls, "created_at"):
                     query = query.order_by(cls.created_at)
