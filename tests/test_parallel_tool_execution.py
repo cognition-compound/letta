@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from letta.schemas.agent import AgentState
+from letta.schemas.llm_config import LLMConfig
 from letta.schemas.openai.chat_completion_response import FunctionCall, ToolCall
 from letta.schemas.parallel_tool_call import (
     ParallelExecutionSummary,
@@ -96,11 +97,15 @@ def sample_tools():
 def sample_agent_state(sample_tools):
     """Create a sample agent state for testing."""
     return AgentState(
-        id=str(uuid.uuid4()),
+        id=f"agent-{uuid.uuid4()}",
         name="test_agent",
         timezone="UTC",
         tools=sample_tools,
-        llm_config=Mock(),
+        llm_config=LLMConfig(
+            model="gpt-4o-mini",
+            model_endpoint_type="openai",
+            context_window=128000,
+        ),
         tool_exec_environment_variables=[],
     )
 
@@ -275,7 +280,7 @@ class TestParallelToolExecution:
         )
         
         assert summary.total_count == 3
-        assert summary.success_rate == 66.67  # approximately 
+        assert abs(summary.success_rate - 66.67) < 0.01  # approximately 
         assert summary.has_errors is True
     
     @pytest.mark.asyncio
