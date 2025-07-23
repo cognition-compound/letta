@@ -659,12 +659,6 @@ def letta_batch_job(server: SyncServer, default_user) -> Job:
     return server.job_manager.create_job(BatchJob(user_id=default_user.id), actor=default_user)
 
 
-@pytest.fixture(scope="session")
-def event_loop(request):
-    """Create an instance of the default event loop for each test case."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest.fixture

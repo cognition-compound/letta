@@ -24,10 +24,9 @@ from letta.services.tool_executor.tool_execution_manager import ToolExecutionMan
 def sample_user():
     """Create a sample user for testing."""
     return User(
-        id=str(uuid.uuid4()),
-        organization_id=str(uuid.uuid4()),
+        id=f"user-{uuid.uuid4()}",
+        organization_id=f"org-{uuid.uuid4()}",
         name="test_user",
-        email="test@example.com",
     )
 
 
@@ -55,7 +54,7 @@ def sample_tool_calls():
             id="call_3",
             type="function", 
             function=FunctionCall(
-                name="search_files",
+                name="list_files",
                 arguments='{"query": "test.py"}'
             )
         )
@@ -67,26 +66,26 @@ def sample_tools():
     """Create sample tools for testing."""
     return [
         Tool(
-            id=str(uuid.uuid4()),
+            id=f"tool-{uuid.uuid4()}",
             name="send_message",
             description="Send a message",
-            tool_type="LETTA_CORE",
+            tool_type="letta_core",
             json_schema={"type": "object"},
             return_char_limit=1000,
         ),
         Tool(
-            id=str(uuid.uuid4()),
+            id=f"tool-{uuid.uuid4()}",
             name="core_memory_append", 
             description="Append to core memory",
-            tool_type="LETTA_MEMORY_CORE",
+            tool_type="letta_memory_core",
             json_schema={"type": "object"},
             return_char_limit=1000,
         ),
         Tool(
-            id=str(uuid.uuid4()),
-            name="search_files",
-            description="Search files",
-            tool_type="LETTA_FILES_CORE", 
+            id=f"tool-{uuid.uuid4()}",
+            name="list_files",
+            description="List files",
+            tool_type="letta_files_core", 
             json_schema={"type": "object"},
             return_char_limit=1000,
         )
@@ -123,7 +122,7 @@ class TestParallelToolCallConfig:
         config = ParallelToolCallConfig()
         assert config.is_memory_tool("core_memory_append") is True
         assert config.is_memory_tool("send_message") is False
-        assert config.is_memory_tool("search_files") is False
+        assert config.is_memory_tool("list_files") is False
     
     def test_should_execute_sequentially(self):
         """Test sequential execution decision logic."""
@@ -139,7 +138,7 @@ class TestParallelToolCallConfig:
         assert config.should_execute_sequentially(["send_message", "core_memory_append"]) is True
         
         # Should execute in parallel when no memory tools
-        assert config.should_execute_sequentially(["send_message", "search_files"]) is False
+        assert config.should_execute_sequentially(["send_message", "list_files"]) is False
         
         # Should execute in parallel when memory tools allowed
         config.allow_memory_tools_parallel = True
@@ -168,7 +167,7 @@ class TestToolCategorizer:
     def test_categorize_file_tool(self, sample_tools):
         """Test categorization of file tools."""
         categorizer = ToolCategorizer()
-        file_tool = next(t for t in sample_tools if t.name == "search_files")
+        file_tool = next(t for t in sample_tools if t.name == "list_files")
         
         profile = categorizer.categorize_tool(file_tool)
         assert profile == ToolSafetyProfile.FILE_OPERATION
@@ -180,7 +179,7 @@ class TestToolCategorizer:
         
         assert "core_memory_append" in result.memory_tools
         assert "send_message" in result.communication_tools
-        assert "search_files" in result.file_tools
+        assert "list_files" in result.file_tools
         assert len(result.recommended_execution_order) > 0
     
     def test_is_safe_for_parallel_execution(self, sample_tools):

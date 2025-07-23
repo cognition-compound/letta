@@ -105,6 +105,7 @@ from letta.services.telemetry_manager import TelemetryManager
 from letta.services.tool_executor.tool_execution_manager import ToolExecutionManager
 from letta.services.tool_manager import ToolManager
 from letta.services.user_manager import UserManager
+from letta.server.db import db_registry
 from letta.settings import DatabaseChoice, model_settings, settings, tool_settings
 from letta.streaming_interface import AgentChunkStreamingInterface
 from letta.utils import get_friendly_error_msg, get_persona_text, make_key
@@ -204,6 +205,10 @@ class SyncServer(Server):
             config.archival_storage_uri = settings.letta_pg_uri_no_default
         config.save()
         self.config = config
+
+        # Initialize both sync and async database connections for tests
+        db_registry.initialize_sync()
+        db_registry.initialize_async()
 
         # Managers that interface with data models
         self.organization_manager = OrganizationManager()
