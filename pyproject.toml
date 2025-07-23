@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "letta"
-version = "0.8.15"
+version = "0.8.17"
 packages = [
     {include = "letta"},
 ]
@@ -20,7 +20,7 @@ typer = "^0.15.2"
 questionary = "^2.0.1"
 pytz = "^2023.3.post1"
 tqdm = "^4.66.1"
-black = {extras = ["jupyter"], version = "^25.0.0"}
+black = {extras = ["jupyter"], version = "^24.2.0"}
 setuptools = "^70"
 prettytable = "^3.9.0"
 pgvector = { version = "^0.2.3", optional = true }
@@ -28,12 +28,12 @@ pre-commit = {version = "^3.5.0", optional = true }
 pg8000 = {version = "^1.30.3", optional = true}
 docstring-parser = ">=0.16,<0.17"
 httpx = "^0.28.0"
-numpy = "^2.0"
+numpy = "^1.26.2"
 demjson3 = "^3.0.6"
 pyyaml = "^6.0.1"
 sqlalchemy-json = "^0.7.0"
-fastapi = "^0.116.0"
-uvicorn = "^0.35.0"
+fastapi = { version = "^0.115.6", optional = true}
+uvicorn = {version = "^0.24.0.post1", optional = true}
 pydantic = "^2.10.6"
 html2text = "^2020.1.16"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.41"}
@@ -41,7 +41,7 @@ pexpect = {version = "^4.9.0", optional = true}
 pyright = {version = "^1.1.347", optional = true}
 #pymilvus = {version ="^2.4.3", optional = true}
 python-box = "^7.1.1"
-sqlmodel = "^0.0.24"
+sqlmodel = "^0.0.16"
 autoflake = {version = "^2.3.0", optional = true}
 python-multipart = "^0.0.19"
 sqlalchemy-utils = "^0.41.2"
@@ -49,7 +49,7 @@ pytest-order = {version = "^1.2.0", optional = true}
 pytest-asyncio = {version = "^0.24.0", optional = true}
 pydantic-settings = "^2.2.1"
 httpx-sse = "^0.4.0"
-isort = "^6.0"
+isort = { version = "^5.13.2", optional = true }
 docker = {version = "^7.1.0", optional = true}
 nltk = "^3.8.1"
 jinja2 = "^3.1.5"
@@ -63,7 +63,7 @@ psycopg2-binary = {version = "^2.9.10", optional = true}
 pathvalidate = "^3.2.1"
 langchain-community = {version = "^0.3.7", optional = true}
 langchain = {version = "^0.3.7", optional = true}
-sentry-sdk = {extras = ["fastapi"], version = "^2.19.1"}
+sentry-sdk = {extras = ["fastapi"], version = "2.19.1"}
 rich = "^13.9.4"
 brotli = "^1.1.0"
 grpcio = "^1.68.1"
@@ -71,20 +71,20 @@ grpcio-tools = "^1.68.1"
 llama-index = "^0.12.2"
 llama-index-embeddings-openai = "^0.3.1"
 e2b-code-interpreter = {version = "^1.0.3", optional = true}
-anthropic = "^0.57.1"
+anthropic = "^0.49.0"
 letta_client = "^0.1.197"
 openai = "^1.60.0"
-opentelemetry-api = "^1.30.0"
-opentelemetry-sdk = "^1.30.0"
-opentelemetry-instrumentation-requests = "^0.51b0"
-opentelemetry-instrumentation-logging = "^0.51b0"
-opentelemetry-exporter-otlp = "^1.30.0"
+opentelemetry-api = "1.30.0"
+opentelemetry-sdk = "1.30.0"
+opentelemetry-instrumentation-requests = "0.51b0"
+opentelemetry-instrumentation-sqlalchemy = "0.51b0"
+opentelemetry-exporter-otlp = "1.30.0"
 google-genai = {version = "^1.15.0", optional = true}
 faker = "^36.1.0"
 colorama = "^0.4.6"
 marshmallow-sqlalchemy = "^1.4.1"
 boto3 = {version = "^1.36.24", optional = true}
-datamodel-code-generator = "^0.31.0"
+datamodel-code-generator = {extras = ["http"], version = "^0.25.0"}
 mcp = {extras = ["cli"], version = "^1.9.4"}
 firecrawl-py = "^2.8.0"
 apscheduler = "^3.11.0"
@@ -93,17 +93,13 @@ matplotlib = "^3.10.1"
 asyncpg = {version = "^0.30.0", optional = true}
 tavily-python = "^0.7.2"
 mistralai = "^1.8.1"
-uvloop = {version = "^0.21.0", optional = true}
+uvloop = {version = "^0.21.0"}
 granian = {version = "^2.3.2", extras = ["uvloop", "reload"], optional = true}
 redis = {version = "^6.2.0", optional = true}
 structlog = "^25.4.0"
 certifi = "^2025.6.15"
 aioboto3 = {version = "^14.3.0", optional = true}
 pinecone = {extras = ["asyncio"], version = "^7.3.0", optional = true}
-aiosqlite = "^0.21.0"
-orjson = "^3.10.18"
-pytest = {version = "^8.0.0", optional = true}
-websockets = {version = "^15.0", optional = true}
 
 
 [tool.poetry.extras]
@@ -111,7 +107,7 @@ postgres = ["pgvector", "pg8000", "psycopg2-binary", "psycopg2", "asyncpg"]
 redis = ["redis"]
 pinecone = ["pinecone"]
 dev = ["pytest", "pytest-asyncio", "pexpect", "black", "pre-commit", "pyright", "pytest-order", "autoflake", "isort", "locust"]
-experimental = ["uvloop", "granian"]
+experimental = ["granian"]
 server = ["websockets", "fastapi", "uvicorn"]
 cloud-tool-sandbox = ["e2b-code-interpreter"]
 external-tools = ["docker", "langchain", "wikipedia", "langchain-community", "firecrawl-py"]
@@ -122,13 +118,17 @@ desktop = ["pgvector", "pg8000", "psycopg2-binary", "psycopg2", "pyright", "webs
 all = ["pgvector", "pg8000", "psycopg2-binary", "psycopg2", "pytest", "pytest-asyncio", "pexpect", "black", "pre-commit", "pyright", "pytest-order", "autoflake", "isort", "websockets", "fastapi", "uvicorn", "docker", "langchain", "wikipedia", "langchain-community", "locust", "uvloop", "granian", "redis", "pinecone"]
 
 [tool.poetry.group.dev.dependencies]
-black = "^25.0.0"
+black = "^24.4.2"
 ipykernel = "^6.29.5"
 ipdb = "^0.13.13"
 pytest-mock = "^3.14.0"
 
 [tool.poetry.group."dev,tests".dependencies]
 pytest-json-report = "^1.5.0"
+
+
+[tool.poetry.group.sqlite.dependencies]
+aiosqlite = "^0.21.0"
 
 [tool.black]
 line-length = 140
