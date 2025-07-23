@@ -20,7 +20,7 @@ typer = "^0.15.2"
 questionary = "^2.0.1"
 pytz = "^2023.3.post1"
 tqdm = "^4.66.1"
-black = {extras = ["jupyter"], version = "^24.2.0"}
+black = {extras = ["jupyter"], version = "^25.1.0"}
 setuptools = "^78.1.1"
 prettytable = "^3.9.0"
 pgvector = { version = "^0.2.3", optional = true }
@@ -118,7 +118,7 @@ desktop = ["pgvector", "pg8000", "psycopg2-binary", "psycopg2", "pyright", "webs
 all = ["pgvector", "pg8000", "psycopg2-binary", "psycopg2", "pytest", "pytest-asyncio", "pexpect", "black", "pre-commit", "pyright", "pytest-order", "autoflake", "isort", "websockets", "fastapi", "uvicorn", "docker", "langchain", "wikipedia", "langchain-community", "locust", "uvloop", "granian", "redis", "pinecone"]
 
 [tool.poetry.group.dev.dependencies]
-black = "^24.4.2"
+black = "^25.1.0"
 ipykernel = "^6.29.5"
 ipdb = "^0.13.13"
 pytest-mock = "^3.14.0"
