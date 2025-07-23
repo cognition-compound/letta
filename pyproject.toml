@@ -122,6 +122,7 @@ black = "^24.4.2"
 ipykernel = "^6.29.5"
 ipdb = "^0.13.13"
 pytest-mock = "^3.14.0"
+pip-audit = "^2.9.0"
 
 [tool.poetry.group."dev,tests".dependencies]
 pytest-json-report = "^1.5.0"
