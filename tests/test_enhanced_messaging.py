@@ -140,6 +140,39 @@ class TestEnhancedMessaging:
             mock_broadcast.assert_called_once_with(mock_agent, "Alert!", match_all=["critical"], match_some=[])
             assert result == "Message broadcasted to 3 agents with tag 'critical'"
 
+    def test_universal_send_uuid_fallback_bare(self, mock_agent):
+        """Test universal send function with bare UUID (gets prefixed with agent-)."""
+        test_uuid = "12345678-1234-4567-8901-123456789abc"
+        with patch("letta.functions.function_sets.multi_agent.send_message_to_agent_async") as mock_send_async:
+            mock_send_async.return_value = "Message sent successfully"
+
+            result = send(mock_agent, "Hello agent", to=test_uuid)
+
+            mock_send_async.assert_called_once_with(mock_agent, "Hello agent", f"agent-{test_uuid}")
+            assert result == "Message sent successfully"
+
+    def test_universal_send_uuid_fallback_with_agent_prefix(self, mock_agent):
+        """Test universal send function with agent: prefix but missing agent- in UUID."""
+        test_uuid = "12345678-1234-4567-8901-123456789abc"
+        with patch("letta.functions.function_sets.multi_agent.send_message_to_agent_async") as mock_send_async:
+            mock_send_async.return_value = "Message sent successfully"
+
+            result = send(mock_agent, "Hello agent", to=f"agent:{test_uuid}")
+
+            mock_send_async.assert_called_once_with(mock_agent, "Hello agent", f"agent-{test_uuid}")
+            assert result == "Message sent successfully"
+
+    def test_universal_send_agent_with_correct_prefix(self, mock_agent):
+        """Test that properly formatted agent IDs still work without modification."""
+        with patch("letta.functions.function_sets.multi_agent.send_message_to_agent_async") as mock_send_async:
+            mock_send_async.return_value = "Message sent successfully"
+
+            result = send(mock_agent, "Hello agent", to="agent:agent-12345678-1234-4567-8901-123456789abc")
+
+            # Should pass through unchanged since it already has agent- prefix
+            mock_send_async.assert_called_once_with(mock_agent, "Hello agent", "agent-12345678-1234-4567-8901-123456789abc")
+            assert result == "Message sent successfully"
+
     def test_universal_send_invalid_target(self, mock_agent):
         """Test universal send function with invalid target."""
         with pytest.raises(ValueError) as exc_info:

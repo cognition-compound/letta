@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING, List
 
@@ -113,7 +114,7 @@ def send_message_to_agent_async(self: "Agent", message: str, other_agent_id: str
     """
     if os.getenv("LETTA_ENVIRONMENT") == "PRODUCTION":
         raise RuntimeError("This tool is not allowed to be run on Letta Cloud.")
-    
+
     # Defensive check: ensure other_agent_id is a string
     if isinstance(other_agent_id, list):
         self.logger.warning(f"other_agent_id was passed as a list {other_agent_id}, extracting first element")
@@ -168,6 +169,10 @@ def send(self: "Agent", message: str, to: str) -> str:
 
     elif to.startswith("agent:"):
         agent_id = to.split(":", 1)[1]
+        # Check if the agent_id is a UUID without the "agent-" prefix
+        if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', agent_id, re.IGNORECASE):
+            # If it's a UUID, prepend "agent-" since Letta expects "agent-<uuid>" format
+            agent_id = f"agent-{agent_id}"
         return send_message_to_agent_async(self, message, agent_id)
 
     elif to.startswith("group:"):
@@ -182,5 +187,12 @@ def send(self: "Agent", message: str, to: str) -> str:
         responses = send_message_to_agents_matching_tags(self, message, match_all=[tag], match_some=[])
         return f"Message broadcasted to {len(responses)} agents with tag '{tag}'"
 
+    elif re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", to, re.IGNORECASE):
+        # Looks like a UUID, prepend "agent-" and treat as agent ID
+        agent_id = f"agent-{to}"
+        return send_message_to_agent_async(self, message, agent_id)
+
     else:
-        raise ValueError(f"Invalid 'to' parameter: {to}. Must be 'user', 'agent:<id>', 'group:<id>', or 'broadcast:<tag>'")
+        raise ValueError(
+            f"Invalid 'to' parameter: {to}. Must be 'user', 'agent:<id>', 'group:<id>', 'broadcast:<tag>', or a UUID (which will be auto-prefixed with 'agent-')"
+        )
