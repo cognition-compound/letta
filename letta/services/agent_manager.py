@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import sqlalchemy as sa
 from sqlalchemy import delete, func, insert, literal, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 
 from letta.constants import (
     BASE_MEMORY_TOOLS,
@@ -37,6 +38,7 @@ from letta.orm import Tool as ToolModel
 from letta.orm import ToolsAgents
 from letta.orm.enums import ToolType
 from letta.orm.errors import NoResultFound
+from letta.orm.exceptions import UniqueConstraintViolationError
 from letta.orm.sandbox_config import AgentEnvironmentVariable
 from letta.orm.sandbox_config import AgentEnvironmentVariable as AgentEnvironmentVariableModel
 from letta.orm.sqlalchemy_base import AccessType
@@ -2272,35 +2274,63 @@ class AgentManager:
     @trace_method
     async def attach_block_async(self, agent_id: str, block_id: str, actor: PydanticUser) -> PydanticAgentState:
         """Attaches a block to an agent. For sleeptime agents, also attaches to paired agents in the same group."""
+        logger = logging.getLogger(__name__)
+        
         async with db_registry.async_session() as session:
-            agent = await AgentModel.read_async(db_session=session, identifier=agent_id, actor=actor)
-            block = await BlockModel.read_async(db_session=session, identifier=block_id, actor=actor)
+            try:
+                logger.info(f"Starting block attachment: agent_id={agent_id}, block_id={block_id}, actor={actor.id}")
+                
+                agent = await AgentModel.read_async(db_session=session, identifier=agent_id, actor=actor)
+                block = await BlockModel.read_async(db_session=session, identifier=block_id, actor=actor)
 
-            # Attach block to the main agent
-            agent.core_memory.append(block)
-            # await agent.update_async(session, actor=actor, no_commit=True)
-            await agent.update_async(session)
+                logger.debug(f"Agent {agent_id} type: {agent.agent_type}, block label: {block.label}")
 
-            # If agent is part of a sleeptime group, attach block to the sleeptime_agent
-            if agent.multi_agent_group and agent.multi_agent_group.manager_type == ManagerType.sleeptime:
-                group = agent.multi_agent_group
-                # Find the sleeptime_agent in the group
-                for other_agent_id in group.agent_ids or []:
-                    if other_agent_id != agent_id:
-                        try:
-                            other_agent = await AgentModel.read_async(db_session=session, identifier=other_agent_id, actor=actor)
-                            if other_agent.agent_type == AgentType.sleeptime_agent and block not in other_agent.core_memory:
-                                other_agent.core_memory.append(block)
-                                # await other_agent.update_async(session, actor=actor, no_commit=True)
-                                await other_agent.update_async(session, actor=actor)
-                        except NoResultFound:
-                            # Agent might not exist anymore, skip
-                            continue
+                # Attach block to the main agent
+                agent.core_memory.append(block)
+                await agent.update_async(session, actor=actor, no_commit=True, no_refresh=True)
+                logger.debug(f"Attached block {block_id} (label: {block.label}) to main agent {agent_id}")
 
-            # TODO: @andy/caren
-            # TODO: Ideally we do two no commits on the update_async calls, and then commit here - but that errors for some reason?
-            # TODO: I have too many things rn so lets look at this later
-            # await session.commit()
+                sleeptime_agents_updated = 0
+                # If agent is part of a sleeptime group, attach block to the sleeptime_agent
+                if agent.multi_agent_group and agent.multi_agent_group.manager_type == ManagerType.sleeptime:
+                    group = agent.multi_agent_group
+                    logger.debug(f"Agent {agent_id} is in sleeptime group with {len(group.agent_ids or [])} total agents")
+                    
+                    # Find the sleeptime_agent in the group
+                    for other_agent_id in group.agent_ids or []:
+                        if other_agent_id != agent_id:
+                            try:
+                                other_agent = await AgentModel.read_async(db_session=session, identifier=other_agent_id, actor=actor)
+                                if other_agent.agent_type == AgentType.sleeptime_agent and block not in other_agent.core_memory:
+                                    other_agent.core_memory.append(block)
+                                    await other_agent.update_async(session, actor=actor, no_commit=True, no_refresh=True)
+                                    sleeptime_agents_updated += 1
+                                    logger.debug(f"Attached block {block_id} (label: {block.label}) to sleeptime agent {other_agent_id}")
+                                else:
+                                    logger.debug(f"Skipping agent {other_agent_id}: type={other_agent.agent_type}, block_already_attached={block in other_agent.core_memory}")
+                            except NoResultFound:
+                                logger.warning(f"Sleeptime agent {other_agent_id} not found, skipping")
+                                continue
+
+                # Atomic commit for all changes
+                await session.commit()
+                logger.info(f"Successfully attached block {block_id} (label: {block.label}) to agent {agent_id} and {sleeptime_agents_updated} sleeptime agents")
+                
+            except (IntegrityError, UniqueConstraintViolationError) as e:
+                await session.rollback()
+                error_msg = str(e)
+                logger.warning(f"Integrity error during block attachment: agent_id={agent_id}, block_id={block_id}, error={error_msg}")
+                
+                # Check if this is a duplicate block attachment (race condition)
+                if "unique_label_per_agent" in error_msg or "unique_agent_block" in error_msg:
+                    logger.info(f"Race condition detected - block {block_id} already attached to agent {agent_id}, returning current state")
+                    # Block already attached, fetch current state and return success
+                    agent = await AgentModel.read_async(db_session=session, identifier=agent_id, actor=actor)
+                    return await agent.to_pydantic_async()
+                else:
+                    logger.error(f"Unexpected integrity error: {error_msg}")
+                    # Re-raise other integrity errors  
+                    raise
 
             return await agent.to_pydantic_async()
 
