@@ -458,7 +458,7 @@ class AgentFileManager:
                     agent_data["block_ids"] = [file_to_db_ids[file_id] for file_id in agent_data["block_ids"]]
 
                 agent_create = CreateAgent(**agent_data)
-                created_agent = await self.agent_manager.create_agent_async(agent_create, actor, _init_with_no_messages=True)
+                created_agent = await self.agent_manager.create_agent_async(agent_create, actor)
                 file_to_db_ids[agent_schema.id] = created_agent.id
                 imported_count += 1
 

@@ -70,15 +70,20 @@ def server():
 
 @pytest.fixture
 def default_organization(server: SyncServer):
-    """Fixture to create and return the default organization."""
-    org = server.organization_manager.create_default_organization()
+    """Fixture to return the default organization (already created by server)."""
+    # The server is initialized with init_with_default_org_and_user=True,
+    # so the default organization already exists
+    from letta.constants import DEFAULT_ORG_ID
+    org = server.organization_manager.get_organization_by_id(org_id=DEFAULT_ORG_ID)
     yield org
 
 
 @pytest.fixture
 def default_user(server: SyncServer, default_organization):
-    """Fixture to create and return the default user within the default organization."""
-    user = server.user_manager.create_default_user(org_id=default_organization.id)
+    """Fixture to return the default user (already created by server)."""
+    # The server is initialized with init_with_default_org_and_user=True,
+    # so the default user already exists
+    user = server.default_user
     yield user
 
 
@@ -1164,7 +1169,6 @@ class TestAgentFileEdgeCases:
         agent_state = await server.agent_manager.create_agent_async(
             agent_create=create_agent_request,
             actor=default_user,
-            _init_with_no_messages=True,  # Create with truly no messages
         )
 
         # Export
