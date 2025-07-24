@@ -66,6 +66,7 @@ def google_ai_check_valid_api_key(api_key: str):
         raise LLMError(message=f"{e}", code=ErrorCode.INTERNAL_SERVER_ERROR)
 
 
+<<<<<<< HEAD
 def google_ai_get_model_list(base_url: str, api_key: str, key_in_header: bool = True) -> List[dict]:
     """Synchronous version to get model list from Google AI API using official SDK."""
     from letta.utils import printd
@@ -102,6 +103,8 @@ def google_ai_get_model_list(base_url: str, api_key: str, key_in_header: bool = 
         raise e
 
 
+=======
+>>>>>>> upstream/main
 async def google_ai_get_model_list_async(
     base_url: str, api_key: str, key_in_header: bool = True, client: Optional[httpx.AsyncClient] = None
 ) -> List[dict]:
