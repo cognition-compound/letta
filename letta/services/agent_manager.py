@@ -1456,7 +1456,6 @@ class AgentManager:
 
             try:
                 # First check if any groups have this agent as their manager
-                from letta.orm.group import Group as GroupModel
                 from sqlalchemy import select
                 
                 groups_with_manager = await session.execute(
