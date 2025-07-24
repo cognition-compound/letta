@@ -64,8 +64,6 @@ class FileAgentBase(LettaBase):
 
     __id_prefix__ = "file_agent"
 
-<<<<<<< HEAD
-=======
     # Core file-agent association fields
     agent_id: str = Field(..., description="Unique identifier of the agent.")
     file_id: str = Field(..., description="Unique identifier of the file.")
@@ -78,10 +76,8 @@ class FileAgentBase(LettaBase):
     )
     last_accessed_at: Optional[datetime] = Field(
         default_factory=datetime.utcnow,
-        description="UTC timestamp of the agent’s most recent access to this file.",
+        description="UTC timestamp of the agent's most recent access to this file.",
     )
-
->>>>>>> upstream/main
 
 class FileAgent(FileAgentBase):
     """
