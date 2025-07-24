@@ -2112,6 +2112,8 @@ async def test_list_agents_query_text_pagination(server: SyncServer, default_use
         actor=default_user,
     )
 
+    await asyncio.sleep(0.1)
+
     agent2 = await server.agent_manager.create_agent_async(
         agent_create=CreateAgent(
             name="Search Agent Two",
@@ -2123,6 +2125,8 @@ async def test_list_agents_query_text_pagination(server: SyncServer, default_use
         ),
         actor=default_user,
     )
+
+    await asyncio.sleep(0.1)
 
     agent3 = await server.agent_manager.create_agent_async(
         agent_create=CreateAgent(
