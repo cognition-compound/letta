@@ -10,7 +10,7 @@ from letta.streaming_interface import StreamingRefreshCLIInterface as interface 
 logger = get_logger(__name__)
 
 
-class ServerChoice(Enum):
+class ServerChoice(str, Enum):
     rest_api = "rest"
     ws_api = "websocket"
 
