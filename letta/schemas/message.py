@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall as OpenAIToolCall
 from openai.types.chat.chat_completion_message_tool_call import Function as OpenAIFunction
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from letta.constants import DEFAULT_MESSAGE_TOOL, DEFAULT_MESSAGE_TOOL_KWARG, TOOL_CALL_ID_MAX_LEN
 from letta.helpers.datetime_helpers import get_utc_time, is_utc_datetime
@@ -89,12 +89,20 @@ class MessageCreate(BaseModel):
     sender_id: Optional[str] = Field(default=None, description="The id of the sender of the message, can be an identity id or agent id")
     batch_item_id: Optional[str] = Field(default=None, description="The id of the LLMBatchItem that this message is associated with")
     group_id: Optional[str] = Field(default=None, description="The multi-agent group that the message was sent in")
+    
+    # Backward compatibility: Accept organization_id from old SDK versions but ignore it
+    organization_id: Optional[str] = Field(default=None, description="Organization ID (deprecated, ignored for backward compatibility)")
+
+    model_config = ConfigDict(extra="ignore")  # Allow extra fields for backward compatibility
 
     def model_dump(self, to_orm: bool = False, **kwargs) -> Dict[str, Any]:
         data = super().model_dump(**kwargs)
-        if to_orm and "content" in data:
-            if isinstance(data["content"], str):
+        if to_orm:
+            # Convert content format for ORM
+            if "content" in data and isinstance(data["content"], str):
                 data["content"] = [TextContent(text=data["content"])]
+            # Remove organization_id for backward compatibility - it's handled by the message manager
+            data.pop("organization_id", None)
         return data
 
 
