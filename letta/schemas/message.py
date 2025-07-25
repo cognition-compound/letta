@@ -128,25 +128,24 @@ class MessageUpdate(BaseModel):
 
 class Message(BaseMessage):
     """
-        Letta's internal representation of a message. Includes methods to convert to/from LLM provider formats.
+    Letta's internal representation of a message. Includes methods to convert to/from LLM provider formats.
 
-        Attributes:
-            id (str): The unique identifier of the message.
-            role (MessageRole): The role of the participant.
-            text (str): The text of the message.
-            user_id (str): The unique identifier of the user.
-            agent_id (str): The unique identifier of the agent.
-            model (str): The model used to make the function call.
-            name (str): The name of the participant.
-            created_at (datetime): The time the message was created.
-            tool_calls (List[OpenAIToolCall,]): The list of tool calls requested.
-            tool_call_id (str): The id of the tool call.
-            step_id (str): The id of the step that this message was created in.
-            otid (str): The offline threading id associated with this message.
-            tool_returns (List[ToolReturn]): The list of tool returns requested.
-            group_id (str): The multi-agent group that the message was sent in.
-            sender_id (str): The id of the sender of the message, can be an identity id or agent id.
-    t
+    Attributes:
+        id (str): The unique identifier of the message.
+        role (MessageRole): The role of the participant.
+        text (str): The text of the message.
+        user_id (str): The unique identifier of the user.
+        agent_id (str): The unique identifier of the agent.
+        model (str): The model used to make the function call.
+        name (str): The name of the participant.
+        created_at (datetime): The time the message was created.
+        tool_calls (List[OpenAIToolCall,]): The list of tool calls requested.
+        tool_call_id (str): The id of the tool call.
+        step_id (str): The id of the step that this message was created in.
+        otid (str): The offline threading id associated with this message.
+        tool_returns (List[ToolReturn]): The list of tool returns requested.
+        group_id (str): The multi-agent group that the message was sent in.
+        sender_id (str): The id of the sender of the message, can be an identity id or agent id.
     """
 
     id: str = BaseMessage.generate_id_field()
@@ -355,16 +354,16 @@ class Message(BaseMessage):
                         try:
                             func_args = parse_json(tool_call.function.arguments)
                             to_param = func_args.get("to", "")
-                            
+
                             # Only treat as assistant message if explicitly to="user"
                             if to_param == "user":
                                 is_send_to_user = True
-                                
+
                             # If assistant_message_tool_name is "send", we need to override
                             # is_send_message to prevent agent-to-agent messages from being converted
                             if assistant_message_tool_name == "send" and to_param != "user":
                                 is_send_message = False
-                                
+
                         except Exception as e:
                             # If parsing fails, default to showing as tool call
                             # This is safer than converting to assistant message
@@ -525,7 +524,7 @@ class Message(BaseMessage):
 
         # Handle different content types (string vs list for multimodal)
         content: List[LettaMessageContentUnion] = []
-        
+
         if openai_message_dict["content"] is None:
             # Empty content
             pass
@@ -548,10 +547,7 @@ class Message(BaseMessage):
                             content.append(ImageContent(image_url=image_data))
                         elif isinstance(image_data, dict):
                             # Dict format with url and optional detail
-                            content.append(ImageContent(
-                                image_url=image_data.get("url", ""),
-                                detail=image_data.get("detail", "auto")
-                            ))
+                            content.append(ImageContent(image_url=image_data.get("url", ""), detail=image_data.get("detail", "auto")))
                     # Skip unknown content types
         else:
             raise ValueError(f"Invalid content type: {type(openai_message_dict['content'])}")
@@ -766,13 +762,7 @@ class Message(BaseMessage):
                     if isinstance(content, TextContent):
                         content_parts.append({"type": "text", "text": content.text})
                     elif isinstance(content, ImageContent):
-                        content_parts.append({
-                            "type": "image_url",
-                            "image_url": {
-                                "url": content.image_url,
-                                "detail": content.detail
-                            }
-                        })
+                        content_parts.append({"type": "image_url", "image_url": {"url": content.image_url, "detail": content.detail}})
                 openai_message = {
                     "content": content_parts,
                     "role": self.role,
@@ -787,7 +777,7 @@ class Message(BaseMessage):
 
         elif self.role == "assistant":
             assert self.tool_calls is not None or text_content is not None or self.content is not None
-            
+
             # Check if we have multimodal content
             if self.content and (len(self.content) > 1 or (len(self.content) == 1 and isinstance(self.content[0], ImageContent))):
                 # Multimodal content - return as array
@@ -796,13 +786,7 @@ class Message(BaseMessage):
                     if isinstance(content, TextContent):
                         content_parts.append({"type": "text", "text": content.text})
                     elif isinstance(content, ImageContent):
-                        content_parts.append({
-                            "type": "image_url",
-                            "image_url": {
-                                "url": content.image_url,
-                                "detail": content.detail
-                            }
-                        })
+                        content_parts.append({"type": "image_url", "image_url": {"url": content.image_url, "detail": content.detail}})
                 openai_message = {
                     "content": content_parts,
                     "role": self.role,
@@ -912,7 +896,7 @@ class Message(BaseMessage):
                     elif isinstance(content, ImageContent):
                         # Import the image source types
                         from letta.schemas.letta_message_content import Base64Image, LettaImage, UrlImage
-                        
+
                         if isinstance(content.source, Base64Image):
                             # Base64 encoded image - use directly
                             content_parts.append(
@@ -949,7 +933,8 @@ class Message(BaseMessage):
                                 # Data URL - extract base64 data
                                 # Parse data URL format: data:[<mediatype>][;base64],<data>
                                 import re
-                                match = re.match(r'data:([^;]+);base64,(.+)', url)
+
+                                match = re.match(r"data:([^;]+);base64,(.+)", url)
                                 if match:
                                     media_type, base64_data = match.groups()
                                     content_parts.append(
@@ -969,13 +954,13 @@ class Message(BaseMessage):
                                 import base64
                                 import urllib.request
                                 from urllib.error import URLError
-                                
+
                                 try:
                                     with urllib.request.urlopen(url, timeout=5) as response:
                                         image_data = response.read()
-                                        base64_data = base64.b64encode(image_data).decode('utf-8')
+                                        base64_data = base64.b64encode(image_data).decode("utf-8")
                                         # Determine MIME type from response headers or URL
-                                        content_type = response.headers.get('Content-Type', 'image/jpeg')
+                                        content_type = response.headers.get("Content-Type", "image/jpeg")
                                         content_parts.append(
                                             {
                                                 "type": "image",
@@ -1112,7 +1097,7 @@ class Message(BaseMessage):
                 elif isinstance(content, ImageContent):
                     # Import the image source types
                     from letta.schemas.letta_message_content import Base64Image, LettaImage, UrlImage
-                    
+
                     if isinstance(content.source, Base64Image):
                         # Base64 encoded image - use inline_data
                         content_parts.append(
@@ -1145,13 +1130,13 @@ class Message(BaseMessage):
                             import base64
                             import urllib.request
                             from urllib.error import URLError
-                            
+
                             try:
                                 with urllib.request.urlopen(url, timeout=5) as response:
                                     image_data = response.read()
-                                    base64_data = base64.b64encode(image_data).decode('utf-8')
+                                    base64_data = base64.b64encode(image_data).decode("utf-8")
                                     # Determine MIME type from response headers or URL
-                                    content_type = response.headers.get('Content-Type', 'image/jpeg')
+                                    content_type = response.headers.get("Content-Type", "image/jpeg")
                                     content_parts.append(
                                         {
                                             "inline_data": {
