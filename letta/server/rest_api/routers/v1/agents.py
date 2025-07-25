@@ -853,7 +853,7 @@ async def send_message(
     model_compatible = agent.llm_config.model_endpoint_type in ["anthropic", "openai", "together", "google_ai", "google_vertex", "bedrock"]
 
     # Create a new run for execution tracking
-    if settings.track_agent_run:
+    if settings.track_last_agent_run:
         job_status = JobStatus.created
         run = await server.job_manager.create_job_async(
             pydantic_job=Run(
@@ -942,7 +942,7 @@ async def send_message(
         job_status = JobStatus.failed
         raise
     finally:
-        if settings.track_agent_run:
+        if settings.track_last_agent_run:
             await server.job_manager.safe_update_job_status_async(
                 job_id=run.id,
                 new_status=job_status,
@@ -989,7 +989,7 @@ async def send_message_streaming(
     not_letta_endpoint = agent.llm_config.model_endpoint != LETTA_MODEL_ENDPOINT
 
     # Create a new job for execution tracking
-    if settings.track_agent_run:
+    if settings.track_last_agent_run:
         job_status = JobStatus.created
         run = await server.job_manager.create_job_async(
             pydantic_job=Run(
@@ -1097,7 +1097,7 @@ async def send_message_streaming(
         job_status = JobStatus.failed
         raise
     finally:
-        if settings.track_agent_run:
+        if settings.track_last_agent_run:
             await server.job_manager.safe_update_job_status_async(
                 job_id=run.id,
                 new_status=job_status,
@@ -1120,7 +1120,7 @@ async def cancel_agent_run(
     """
 
     actor = await server.user_manager.get_actor_or_default_async(actor_id=actor_id)
-    if not settings.track_agent_run:
+    if not settings.track_last_agent_run:
         raise HTTPException(status_code=400, detail="Agent run tracking is disabled")
     if not run_ids:
         redis_client = await get_redis_client()

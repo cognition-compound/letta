@@ -94,7 +94,7 @@ async def cancel_job(
     agent execution to terminate as soon as possible.
     """
     actor = await server.user_manager.get_actor_or_default_async(actor_id=actor_id)
-    if not settings.track_agent_run:
+    if not settings.track_last_agent_run:
         raise HTTPException(status_code=400, detail="Agent run tracking is disabled")
 
     try:
