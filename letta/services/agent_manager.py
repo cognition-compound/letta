@@ -38,7 +38,7 @@ from letta.orm import Tool as ToolModel
 from letta.orm import ToolsAgents
 from letta.orm.enums import ToolType
 from letta.orm.errors import NoResultFound
-from letta.orm.exceptions import UniqueConstraintViolationError
+from letta.orm.errors import UniqueConstraintViolationError
 from letta.orm.sandbox_config import AgentEnvironmentVariable
 from letta.orm.sandbox_config import AgentEnvironmentVariable as AgentEnvironmentVariableModel
 from letta.orm.sqlalchemy_base import AccessType

@@ -8,7 +8,7 @@ by simulating concurrent block attachment attempts to sleeptime agents.
 import asyncio
 import pytest
 from sqlalchemy.exc import IntegrityError
-from letta.orm.exceptions import UniqueConstraintViolationError
+from letta.orm.errors import UniqueConstraintViolationError
 from letta.services.agent_manager import AgentManager
 from letta.schemas.agent import CreateAgent
 from letta.schemas.block import CreateBlock

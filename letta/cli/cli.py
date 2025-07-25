@@ -16,7 +16,7 @@ class ServerChoice(Enum):
 
 
 def server(
-    type: Annotated[ServerChoice, typer.Option(help="Server to run")] = "rest",
+    type: Annotated[ServerChoice, typer.Option(help="Server to run")] = ServerChoice.rest_api,
     port: Annotated[Optional[int], typer.Option(help="Port to run the server on")] = None,
     host: Annotated[Optional[str], typer.Option(help="Host to run the server on (default to localhost)")] = None,
     debug: Annotated[bool, typer.Option(help="Turn debugging output on")] = False,
