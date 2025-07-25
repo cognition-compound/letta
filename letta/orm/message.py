@@ -77,9 +77,11 @@ class Message(SqlalchemyBase, OrganizationMixin, AgentMixin):
 
     def to_pydantic(self) -> PydanticMessage:
         """Custom pydantic conversion to handle data using legacy text field"""
-        # Create a dict from the ORM object, excluding organization_id to prevent client schema validation errors
-        model_dict = {k: v for k, v in self.__dict__.items() if k != "organization_id" and not k.startswith("_")}
-        model = self.__pydantic_model__.model_validate(model_dict)
+        # Only include fields that exist in the Pydantic schema to avoid client validation errors
+        pydantic_fields = set(self.__pydantic_model__.model_fields.keys())
+        filtered_data = {k: v for k, v in self.__dict__.items() if k in pydantic_fields and not k.startswith("_")}
+
+        model = self.__pydantic_model__.model_validate(filtered_data)
         if self.text and not model.content:
             model.content = [PydanticTextContent(text=self.text)]
         # If there are no tool calls, set tool_calls to None
