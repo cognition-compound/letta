@@ -250,7 +250,8 @@ class DatabaseRegistry:
         finally:
             del frame
 
-        self.session_caller_trace(caller_info)
+        # TODO: Implement session caller tracing
+        # self.session_caller_trace(caller_info)
 
         session_factory = self.get_session_factory(name)
         if not session_factory:
