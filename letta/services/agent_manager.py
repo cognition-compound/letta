@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set, Tuple
 
 import sqlalchemy as sa
-from sqlalchemy import delete, func, insert, literal, or_, select, tuple_
+from sqlalchemy import and_, delete, exists, func, insert, literal, or_, select, tuple_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 
@@ -178,6 +178,32 @@ class AgentManager:
             raise ValueError(f"Tools not found by id:   {missing_ids}")
 
         return name_to_id, id_to_name
+
+    @trace_method
+    async def _validate_agent_exists_async(self, session, agent_id: str, actor: PydanticUser) -> None:
+        """
+        Validate that an agent exists and user has access to it using raw SQL for efficiency.
+        
+        Args:
+            session: Database session
+            agent_id: ID of the agent to validate
+            actor: User performing the action
+            
+        Raises:
+            NoResultFound: If agent doesn't exist or user doesn't have access
+        """
+        agent_exists_query = select(
+            exists().where(
+                and_(
+                    AgentModel.id == agent_id,
+                    AgentModel.organization_id == actor.organization_id,
+                    AgentModel.is_deleted == False
+                )
+            )
+        )
+        result = await session.execute(agent_exists_query)
+        if not result.scalar():
+            raise NoResultFound(f"Agent '{agent_id}' not found")
 
     @staticmethod
     def _bulk_insert_pivot(session, table, rows: list[dict]):
