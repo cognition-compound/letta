@@ -183,6 +183,11 @@ class Message(BaseMessage):
     )
     # This overrides the optional base orm schema, created_at MUST exist on all messages objects
     created_at: datetime = Field(default_factory=get_utc_time, description="The timestamp when the object was created.")
+    
+    # Backward compatibility: Accept organization_id from old SDK versions but ignore it
+    organization_id: Optional[str] = Field(default=None, description="Organization ID (deprecated, ignored for backward compatibility)")
+
+    model_config = ConfigDict(extra="ignore")  # Allow extra fields for backward compatibility
 
     @field_validator("role")
     @classmethod
