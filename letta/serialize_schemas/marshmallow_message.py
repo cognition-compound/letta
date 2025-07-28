@@ -38,3 +38,4 @@ class SerializedMessageSchema(BaseSchema):
     class Meta(BaseSchema.Meta):
         model = Message
         exclude = BaseSchema.Meta.exclude + ("step", "job_message", "otid", "is_deleted", "organization")
+        unknown = "exclude"  # Ignore unknown fields for backward compatibility with older SDK versions
