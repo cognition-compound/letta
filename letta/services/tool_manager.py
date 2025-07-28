@@ -3,6 +3,8 @@ import os
 import warnings
 from typing import List, Optional, Set, Union
 
+from sqlalchemy import func, select
+
 from letta.constants import (
     BASE_FUNCTION_RETURN_CHAR_LIMIT,
     BASE_MEMORY_TOOLS,
@@ -104,8 +106,10 @@ class ToolManager:
 
     @enforce_types
     @trace_method
-    def create_or_update_mcp_tool(self, tool_create: ToolCreate, mcp_server_name: str, actor: PydanticUser) -> PydanticTool:
-        metadata = {MCP_TOOL_TAG_NAME_PREFIX: {"server_name": mcp_server_name}}
+    def create_or_update_mcp_tool(
+        self, tool_create: ToolCreate, mcp_server_name: str, mcp_server_id: str, actor: PydanticUser
+    ) -> PydanticTool:
+        metadata = {MCP_TOOL_TAG_NAME_PREFIX: {"server_name": mcp_server_name, "server_id": mcp_server_id}}
         return self.create_or_update_tool(
             PydanticTool(
                 tool_type=ToolType.EXTERNAL_MCP, name=tool_create.json_schema["name"], metadata_=metadata, **tool_create.model_dump()
@@ -114,8 +118,10 @@ class ToolManager:
         )
 
     @enforce_types
-    async def create_mcp_tool_async(self, tool_create: ToolCreate, mcp_server_name: str, actor: PydanticUser) -> PydanticTool:
-        metadata = {MCP_TOOL_TAG_NAME_PREFIX: {"server_name": mcp_server_name}}
+    async def create_mcp_tool_async(
+        self, tool_create: ToolCreate, mcp_server_name: str, mcp_server_id: str, actor: PydanticUser
+    ) -> PydanticTool:
+        metadata = {MCP_TOOL_TAG_NAME_PREFIX: {"server_name": mcp_server_name, "server_id": mcp_server_id}}
         return await self.create_or_update_tool_async(
             PydanticTool(
                 tool_type=ToolType.EXTERNAL_MCP, name=tool_create.json_schema["name"], metadata_=metadata, **tool_create.model_dump()
@@ -289,6 +295,16 @@ class ToolManager:
                 return tool.id
         except NoResultFound:
             return None
+
+    @enforce_types
+    @trace_method
+    async def tool_exists_async(self, tool_id: str, actor: PydanticUser) -> bool:
+        """Check if a tool exists and belongs to the user's organization (lightweight check)."""
+        async with db_registry.async_session() as session:
+            query = select(func.count(ToolModel.id)).where(ToolModel.id == tool_id, ToolModel.organization_id == actor.organization_id)
+            result = await session.execute(query)
+            count = result.scalar()
+            return count > 0
 
     @enforce_types
     @trace_method

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from letta.orm.block import Block
 from letta.orm.custom_columns import EmbeddingConfigColumn, LLMConfigColumn, ResponseFormatColumn, ToolRulesColumn
 from letta.orm.identity import Identity
-from letta.orm.mixins import OrganizationMixin
+from letta.orm.mixins import OrganizationMixin, ProjectMixin
 from letta.orm.organization import Organization
 from letta.orm.sqlalchemy_base import SqlalchemyBase
 from letta.schemas.agent import AgentState as PydanticAgentState
@@ -20,6 +20,7 @@ from letta.schemas.llm_config import LLMConfig
 from letta.schemas.memory import Memory
 from letta.schemas.response_format import ResponseFormatUnion
 from letta.schemas.tool_rule import ToolRule
+from letta.utils import calculate_file_defaults_based_on_context_window
 
 if TYPE_CHECKING:
     from letta.orm.agents_tags import AgentsTags
@@ -30,7 +31,7 @@ if TYPE_CHECKING:
     from letta.orm.tool import Tool
 
 
-class Agent(SqlalchemyBase, OrganizationMixin, AsyncAttrs):
+class Agent(SqlalchemyBase, OrganizationMixin, ProjectMixin, AsyncAttrs):
     __tablename__ = "agents"
     __pydantic_model__ = PydanticAgentState
     __table_args__ = (Index("ix_agents_created_at", "created_at", "id"),)
@@ -66,7 +67,6 @@ class Agent(SqlalchemyBase, OrganizationMixin, AsyncAttrs):
     embedding_config: Mapped[Optional[EmbeddingConfig]] = mapped_column(
         EmbeddingConfigColumn, doc="the embedding configuration object for this agent."
     )
-    project_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, doc="The id of the project the agent belongs to.")
     template_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, doc="The id of the template the agent belongs to.")
     base_template_id: Mapped[Optional[str]] = mapped_column(String, nullable=True, doc="The base template id of the agent.")
 
@@ -91,6 +91,14 @@ class Agent(SqlalchemyBase, OrganizationMixin, AsyncAttrs):
 
     # timezone
     timezone: Mapped[Optional[str]] = mapped_column(String, nullable=True, doc="The timezone of the agent (for the context window).")
+
+    # file related controls
+    max_files_open: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, doc="Maximum number of files that can be open at once for this agent."
+    )
+    per_file_view_window_char_limit: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, doc="The per-file view window character limit for this agent."
+    )
 
     # relationships
     organization: Mapped["Organization"] = relationship("Organization", back_populates="agents", lazy="raise")
@@ -146,6 +154,15 @@ class Agent(SqlalchemyBase, OrganizationMixin, AsyncAttrs):
         lazy="selectin",
     )
 
+    def _get_per_file_view_window_char_limit(self) -> int:
+        """Get the per_file_view_window_char_limit, calculating defaults if None."""
+        if self.per_file_view_window_char_limit is not None:
+            return self.per_file_view_window_char_limit
+
+        context_window = self.llm_config.context_window if self.llm_config and self.llm_config.context_window else None
+        _, default_char_limit = calculate_file_defaults_based_on_context_window(context_window)
+        return default_char_limit
+
     def to_pydantic(self, include_relationships: Optional[Set[str]] = None) -> PydanticAgentState:
         """
         Converts the SQLAlchemy Agent model into its Pydantic counterpart.
@@ -191,6 +208,8 @@ class Agent(SqlalchemyBase, OrganizationMixin, AsyncAttrs):
             "last_run_completion": self.last_run_completion,
             "last_run_duration_ms": self.last_run_duration_ms,
             "timezone": self.timezone,
+            "max_files_open": self.max_files_open,
+            "per_file_view_window_char_limit": self.per_file_view_window_char_limit,
             # optional field defaults
             "tags": [],
             "tools": [],
@@ -208,7 +227,12 @@ class Agent(SqlalchemyBase, OrganizationMixin, AsyncAttrs):
             "sources": lambda: [s.to_pydantic() for s in self.sources],
             "memory": lambda: Memory(
                 blocks=[b.to_pydantic() for b in self.core_memory],
-                file_blocks=[block for b in self.file_agents if (block := b.to_pydantic_block()) is not None],
+                file_blocks=[
+                    block
+                    for b in self.file_agents
+                    if (block := b.to_pydantic_block(per_file_view_window_char_limit=self._get_per_file_view_window_char_limit()))
+                    is not None
+                ],
                 prompt_template=get_prompt_template_for_agent_type(self.agent_type),
             ),
             "identity_ids": lambda: [i.id for i in self.identities],
@@ -271,6 +295,8 @@ class Agent(SqlalchemyBase, OrganizationMixin, AsyncAttrs):
             "response_format": self.response_format,
             "last_run_completion": self.last_run_completion,
             "last_run_duration_ms": self.last_run_duration_ms,
+            "max_files_open": self.max_files_open,
+            "per_file_view_window_char_limit": self.per_file_view_window_char_limit,
         }
         optional_fields = {
             "tags": [],
@@ -314,7 +340,11 @@ class Agent(SqlalchemyBase, OrganizationMixin, AsyncAttrs):
         state["sources"] = [s.to_pydantic() for s in sources]
         state["memory"] = Memory(
             blocks=[m.to_pydantic() for m in memory],
-            file_blocks=[block for b in file_agents if (block := b.to_pydantic_block()) is not None],
+            file_blocks=[
+                block
+                for b in file_agents
+                if (block := b.to_pydantic_block(per_file_view_window_char_limit=self._get_per_file_view_window_char_limit())) is not None
+            ],
             prompt_template=get_prompt_template_for_agent_type(self.agent_type),
         )
         state["identity_ids"] = [i.id for i in identities]

@@ -8,6 +8,7 @@ class ProviderType(str, Enum):
     openai = "openai"
     letta = "letta"
     deepseek = "deepseek"
+    cerebras = "cerebras"
     lmstudio_openai = "lmstudio_openai"
     xai = "xai"
     mistral = "mistral"
@@ -17,6 +18,7 @@ class ProviderType(str, Enum):
     azure = "azure"
     vllm = "vllm"
     bedrock = "bedrock"
+    cohere = "cohere"
 
 
 class ProviderCategory(str, Enum):
@@ -99,6 +101,10 @@ class FileProcessingStatus(str, Enum):
     EMBEDDING = "embedding"
     COMPLETED = "completed"
     ERROR = "error"
+
+    def is_terminal_state(self) -> bool:
+        """Check if the processing status is in a terminal state (completed or error)."""
+        return self in (FileProcessingStatus.COMPLETED, FileProcessingStatus.ERROR)
 
 
 class ToolType(str, Enum):

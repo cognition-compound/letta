@@ -6,7 +6,7 @@ from typing import Optional
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from letta.local_llm.constants import DEFAULT_WRAPPER_NAME
+from letta.local_llm.constants import DEFAULT_WRAPPER_NAME, INNER_THOUGHTS_KWARG
 from letta.services.summarizer.enums import SummarizationMode
 
 
@@ -83,6 +83,8 @@ class ModelSettings(BaseSettings):
 
     global_max_context_window_limit: int = 32000
 
+    inner_thoughts_kwarg: str | None = Field(default=INNER_THOUGHTS_KWARG, description="Key used for passing in inner thoughts.")
+
     # env_prefix='my_prefix_'
 
     # when we use /completions APIs (instead of /chat/completions), we need to specify a model wrapper
@@ -149,9 +151,6 @@ class ModelSettings(BaseSettings):
     # openllm
     openllm_auth_type: Optional[str] = None
     openllm_api_key: Optional[str] = None
-
-    # disable openapi schema generation
-    disable_schema_generation: bool = False
 
 
 env_cors_origins = os.getenv("ACCEPTABLE_ORIGINS")
@@ -243,7 +242,7 @@ class Settings(BaseSettings):
     uvicorn_reload: bool = False
     uvicorn_timeout_keep_alive: int = 5
 
-    use_uvloop: bool = Field(default=True, description="Enable uvloop as asyncio event loop.")
+    use_uvloop: bool = Field(default=False, description="Enable uvloop as asyncio event loop.")
     use_granian: bool = Field(default=False, description="Use Granian for workers")
     sqlalchemy_tracing: bool = False
 
@@ -278,6 +277,10 @@ class Settings(BaseSettings):
     pinecone_source_index: Optional[str] = "sources"
     pinecone_agent_index: Optional[str] = "recall"
     upsert_pinecone_indices: bool = False
+
+    # File processing timeout settings
+    file_processing_timeout_minutes: int = 30
+    file_processing_timeout_error_message: str = "File processing timed out after {} minutes. Please try again."
 
     @property
     def letta_pg_uri(self) -> str:
@@ -316,12 +319,21 @@ class Settings(BaseSettings):
 class TestSettings(Settings):
     model_config = SettingsConfigDict(env_prefix="letta_test_", extra="ignore")
 
-    letta_dir: Optional[Path] = Field(Path.home() / ".letta/test", env="LETTA_TEST_DIR")
+    letta_dir: Path | None = Field(Path.home() / ".letta/test", env="LETTA_TEST_DIR")
 
 
 class LogSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="letta_logging_", extra="ignore")
-    verbose_telemetry_logging: bool = False
+    debug: bool | None = Field(False, description="Enable debugging for logging")
+    json_logging: bool = Field(False, description="Enable json logging instead of text logging")
+    log_level: str | None = Field("WARNING", description="Logging level")
+    letta_log_path: Path | None = Field(Path.home() / ".letta" / "logs" / "Letta.log")
+    verbose_telemetry_logging: bool = Field(False)
+
+
+class TelemetrySettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="letta_telemetry_", extra="ignore")
+    profiler: bool | None = Field(False, description="Enable use of the profiler.")
 
 
 # singleton
@@ -331,3 +343,4 @@ model_settings = ModelSettings()
 tool_settings = ToolSettings()
 summarizer_settings = SummarizerSettings()
 log_settings = LogSettings()
+telemetry_settings = TelemetrySettings()

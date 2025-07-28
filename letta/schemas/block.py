@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from pydantic import Field, model_validator
@@ -18,6 +19,7 @@ class BaseBlock(LettaBase, validate_assignment=True):
     value: str = Field(..., description="Value of the block.")
     limit: int = Field(CORE_MEMORY_BLOCK_CHAR_LIMIT, description="Character limit of the block.")
 
+    project_id: Optional[str] = Field(None, description="The associated project id.")
     # template data (optional)
     template_name: Optional[str] = Field(None, description="Name of the block if it is a template.", alias="name")
     is_template: bool = Field(False, description="Whether the block is a template (e.g. saved human/persona options).")
@@ -79,6 +81,16 @@ class Block(BaseBlock):
     last_updated_by_id: Optional[str] = Field(None, description="The id of the user that last updated this Block.")
 
 
+class FileBlock(Block):
+    file_id: str = Field(..., description="Unique identifier of the file.")
+    source_id: str = Field(..., description="Unique identifier of the source.")
+    is_open: bool = Field(..., description="True if the agent currently has the file open.")
+    last_accessed_at: Optional[datetime] = Field(
+        default_factory=datetime.utcnow,
+        description="UTC timestamp of the agent’s most recent access to this file. Any operations from the open, close, or search tools will update this field.",
+    )
+
+
 class Human(Block):
     """Human block of the LLM context"""
 
@@ -101,6 +113,7 @@ class BlockUpdate(BaseBlock):
 
     limit: Optional[int] = Field(None, description="Character limit of the block.")
     value: Optional[str] = Field(None, description="Value of the block.")
+    project_id: Optional[str] = Field(None, description="The associated project id.")
 
     class Config:
         extra = "ignore"  # Ignores extra fields
@@ -113,6 +126,7 @@ class CreateBlock(BaseBlock):
     limit: int = Field(CORE_MEMORY_BLOCK_CHAR_LIMIT, description="Character limit of the block.")
     value: str = Field(..., description="Value of the block.")
 
+    project_id: Optional[str] = Field(None, description="The associated project id.")
     # block templates
     is_template: bool = False
     template_name: Optional[str] = Field(None, description="Name of the block if it is a template.", alias="name")

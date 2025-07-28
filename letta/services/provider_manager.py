@@ -207,18 +207,18 @@ class ProviderManager:
 
     @enforce_types
     @trace_method
-    def check_provider_api_key(self, provider_check: ProviderCheck) -> None:
+    async def check_provider_api_key(self, provider_check: ProviderCheck) -> None:
         provider = PydanticProvider(
             name=provider_check.provider_type.value,
             provider_type=provider_check.provider_type,
             api_key=provider_check.api_key,
             provider_category=ProviderCategory.byok,
-            access_id_key=provider_check.access_id_key,  # This contains the access key ID for Bedrock
+            access_key=provider_check.access_key,  # This contains the access key ID for Bedrock
             region=provider_check.region,
         ).cast_to_subtype()
 
         # TODO: add more string sanity checks here before we hit actual endpoints
         if not provider.api_key:
-            raise ValueError("API key is required")
+            raise ValueError("API key is required!")
 
-        provider.check_api_key()
+        await provider.check_api_key()

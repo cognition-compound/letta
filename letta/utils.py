@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from functools import wraps
 from logging import Logger
-from typing import Any, Coroutine, Union, _GenericAlias, get_args, get_origin, get_type_hints
+from typing import Any, Coroutine, Optional, Union, _GenericAlias, get_args, get_origin, get_type_hints
 from urllib.parse import urljoin, urlparse
 
 import demjson3 as demjson
@@ -27,9 +27,10 @@ from sqlalchemy import text
 
 import letta
 from letta.constants import (
-    CLI_WARNING_PREFIX,
     CORE_MEMORY_HUMAN_CHAR_LIMIT,
     CORE_MEMORY_PERSONA_CHAR_LIMIT,
+    DEFAULT_CORE_MEMORY_SOURCE_CHAR_LIMIT,
+    DEFAULT_MAX_FILES_OPEN,
     ERROR_MESSAGE_PREFIX,
     LETTA_DIR,
     MAX_FILENAME_LENGTH,
@@ -849,47 +850,32 @@ def parse_json(string) -> dict:
         raise e
 
 
-def validate_function_response(function_response_string: any, return_char_limit: int, strict: bool = False, truncate: bool = True) -> str:
+def validate_function_response(function_response: Any, return_char_limit: int, strict: bool = False, truncate: bool = True) -> str:
     """Check to make sure that a function used by Letta returned a valid response. Truncates to return_char_limit if necessary.
 
-    Responses need to be strings (or None) that fall under a certain text count limit.
+    This makes sure that we can coerce the function_response into a string that meets our criteria. We handle some soft coercion.
+    If strict is True, we raise a ValueError if function_response is not a string or None.
     """
-    if not isinstance(function_response_string, str):
-        # Soft correction for a few basic types
+    if isinstance(function_response, str):
+        function_response_string = function_response
 
-        if function_response_string is None:
-            # function_response_string = "Empty (no function output)"
-            function_response_string = "None"  # backcompat
+    elif function_response is None:
+        function_response_string = "None"
 
-        elif isinstance(function_response_string, dict):
-            if strict:
-                # TODO add better error message
-                raise ValueError(function_response_string)
+    elif strict:
+        raise ValueError(f"Strict mode violation. Function returned type: {type(function_response).__name__}")
 
-            # Allow dict through since it will be cast to json.dumps()
-            try:
-                # TODO find a better way to do this that won't result in double escapes
-                function_response_string = json_dumps(function_response_string)
-            except:
-                raise ValueError(function_response_string)
+    elif isinstance(function_response, dict):
+        # As functions can return arbitrary data, if there's already nesting somewhere in the response, it's difficult
+        # for us to not result in double escapes.
+        function_response_string = json_dumps(function_response)
+    else:
+        logger.debug(f"Function returned type {type(function_response).__name__}. Coercing to string.")
+        function_response_string = str(function_response)
 
-        else:
-            if strict:
-                # TODO add better error message
-                raise ValueError(function_response_string)
-
-            # Try to convert to a string, but throw a warning to alert the user
-            try:
-                function_response_string = str(function_response_string)
-            except:
-                raise ValueError(function_response_string)
-
-    # Now check the length and make sure it doesn't go over the limit
     # TODO we should change this to a max token limit that's variable based on tokens remaining (or context-window)
     if truncate and len(function_response_string) > return_char_limit:
-        print(
-            f"{CLI_WARNING_PREFIX}function return was over limit ({len(function_response_string)} > {return_char_limit}) and was truncated"
-        )
+        logger.warning(f"function return was over limit ({len(function_response_string)} > {return_char_limit}) and was truncated")
         function_response_string = f"{function_response_string[:return_char_limit]}... [NOTE: function output was truncated since it exceeded the character limit ({len(function_response_string)} > {return_char_limit})]"
 
     return function_response_string
@@ -1206,3 +1192,34 @@ async def get_latest_alembic_revision() -> str:
     except Exception as e:
         logger.error(f"Error getting latest alembic revision: {e}")
         return "unknown"
+
+
+def calculate_file_defaults_based_on_context_window(context_window: Optional[int]) -> tuple[int, int]:
+    """Calculate reasonable defaults for max_files_open and per_file_view_window_char_limit
+    based on the model's context window size.
+
+    Args:
+        context_window: The context window size of the model. If None, returns conservative defaults.
+
+    Returns:
+        A tuple of (max_files_open, per_file_view_window_char_limit)
+    """
+    if not context_window:
+        # If no context window info, use conservative defaults
+        return DEFAULT_MAX_FILES_OPEN, DEFAULT_CORE_MEMORY_SOURCE_CHAR_LIMIT
+
+    # Define defaults based on context window ranges
+    # Assuming ~4 chars per token
+    # Available chars = available_tokens * 4
+
+    # TODO: Check my math here
+    if context_window <= 8_000:  # Small models (4K-8K)
+        return 3, 5_000  # ~3.75K tokens
+    elif context_window <= 32_000:  # Medium models (16K-32K)
+        return 5, 15_000  # ~18.75K tokens
+    elif context_window <= 128_000:  # Large models (100K-128K)
+        return 10, 25_000  # ~62.5K tokens
+    elif context_window <= 200_000:  # Very large models (128K-200K)
+        return 10, 40_000  # ~100k tokens
+    else:  # Extremely large models (200K+)
+        return 15, 40_000  # ~1505k tokens
