@@ -65,6 +65,7 @@ class ParallelToolCallConfig(BaseModel):
             "memory_rethink",
             "memory_replace",
             "memory_append",
+            "memory_insert",
         },
         description="Set of tool names that perform memory operations",
     )

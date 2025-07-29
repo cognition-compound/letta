@@ -7,6 +7,7 @@ from opentelemetry.trace import Span
 
 from letta.constants import FUNCTION_RETURN_VALUE_TRUNCATED
 from letta.helpers.datetime_helpers import AsyncTimer
+from letta.local_llm.constants import INNER_THOUGHTS_KWARG
 from letta.log import get_logger
 from letta.orm.enums import ToolType
 from letta.otel.context import get_ctx_attributes, get_filtered_ctx_attributes
@@ -310,6 +311,7 @@ class ToolExecutionManager:
             # Parse tool arguments
             tool_args = _safe_load_tool_call_str(tool_call.function.arguments)
             _pop_heartbeat(tool_args)  # Remove heartbeat from args
+            tool_args.pop(INNER_THOUGHTS_KWARG, None)  # Remove thinking from args
 
             # Execute the tool
             execution_result = await self.execute_tool_async(
