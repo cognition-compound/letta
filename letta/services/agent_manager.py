@@ -90,6 +90,7 @@ from letta.services.helpers.agent_manager_helper import (
     derive_system_message,
     initialize_message_sequence,
     package_initial_message_sequence,
+    validate_agent_exists_async,
 )
 from letta.services.identity_manager import IdentityManager
 from letta.services.message_manager import MessageManager
