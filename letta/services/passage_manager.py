@@ -42,6 +42,23 @@ async def get_openai_embedding_async(text: str, model: str, endpoint: str) -> li
 class PassageManager:
     """Manager class to handle business logic related to Passages."""
 
+    @staticmethod
+    def _sanitize_text(text: str) -> str:
+        """
+        Sanitize text content by removing null bytes that cause PostgreSQL UTF-8 encoding errors.
+
+        Args:
+            text: Text to sanitize
+
+        Returns:
+            Sanitized text safe for PostgreSQL database storage
+        """
+        if text is None:
+            return text
+
+        # Remove null bytes (0x00) - the primary cause of PostgreSQL UTF-8 errors
+        return text.replace("\x00", "")
+
     # AGENT PASSAGE METHODS
     @enforce_types
     @trace_method
@@ -151,7 +168,7 @@ class PassageManager:
         data = pydantic_passage.model_dump(to_orm=True)
         common_fields = {
             "id": data.get("id"),
-            "text": data["text"],
+            "text": self._sanitize_text(data["text"]),
             "embedding": data["embedding"],
             "embedding_config": data["embedding_config"],
             "organization_id": data["organization_id"],
@@ -178,7 +195,7 @@ class PassageManager:
         data = pydantic_passage.model_dump(to_orm=True)
         common_fields = {
             "id": data.get("id"),
-            "text": data["text"],
+            "text": self._sanitize_text(data["text"]),
             "embedding": data["embedding"],
             "embedding_config": data["embedding_config"],
             "organization_id": data["organization_id"],
@@ -207,7 +224,7 @@ class PassageManager:
         data = pydantic_passage.model_dump(to_orm=True)
         common_fields = {
             "id": data.get("id"),
-            "text": data["text"],
+            "text": self._sanitize_text(data["text"]),
             "embedding": data["embedding"],
             "embedding_config": data["embedding_config"],
             "organization_id": data["organization_id"],
@@ -240,7 +257,7 @@ class PassageManager:
         data = pydantic_passage.model_dump(to_orm=True)
         common_fields = {
             "id": data.get("id"),
-            "text": data["text"],
+            "text": self._sanitize_text(data["text"]),
             "embedding": data["embedding"],
             "embedding_config": data["embedding_config"],
             "organization_id": data["organization_id"],
@@ -299,7 +316,7 @@ class PassageManager:
         data = pydantic_passage.model_dump(to_orm=True)
         common_fields = {
             "id": data.get("id"),
-            "text": data["text"],
+            "text": self._sanitize_text(data["text"]),
             "embedding": data["embedding"],
             "embedding_config": data["embedding_config"],
             "organization_id": data["organization_id"],
@@ -347,7 +364,7 @@ class PassageManager:
             data = p.model_dump(to_orm=True)
             common_fields = {
                 "id": data.get("id"),
-                "text": data["text"],
+                "text": self._sanitize_text(data["text"]),
                 "embedding": data["embedding"],
                 "embedding_config": data["embedding_config"],
                 "organization_id": data["organization_id"],
@@ -386,7 +403,7 @@ class PassageManager:
             data = p.model_dump(to_orm=True)
             common_fields = {
                 "id": data.get("id"),
-                "text": data["text"],
+                "text": self._sanitize_text(data["text"]),
                 "embedding": data["embedding"],
                 "embedding_config": data["embedding_config"],
                 "organization_id": data["organization_id"],
