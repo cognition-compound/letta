@@ -7,6 +7,8 @@ from typing import Optional, Union
 
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
+from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall as OpenAIToolCall
+from openai.types.chat.chat_completion_message_tool_call import Function as OpenAIFunction
 from opentelemetry.trace import Span
 
 from letta.agents.base_agent import BaseAgent
@@ -19,7 +21,7 @@ from letta.agents.helpers import (
     _safe_load_tool_call_str,
     generate_step_id,
 )
-from letta.constants import DEFAULT_MAX_STEPS, NON_USER_MSG_PREFIX
+from letta.constants import DEFAULT_MAX_STEPS, NON_USER_MSG_PREFIX, REQUEST_HEARTBEAT_PARAM
 from letta.errors import ContextWindowExceededError
 from letta.helpers import ToolRulesSolver
 from letta.helpers.datetime_helpers import AsyncTimer, get_utc_time, get_utc_timestamp_ns, ns_to_ms
@@ -1117,38 +1119,68 @@ class LettaAgent(BaseAgent):
                 step_id=step_id,
             )
             
-            # Create messages from parallel results
+            # Create messages from parallel results - FIXED APPROACH
+            # OpenAI requires: 1 assistant message with ALL tool_calls, then individual tool response messages
             all_messages = []
             continue_stepping = parallel_summary.continue_stepping
             stop_reason = parallel_summary.stop_reason
             
-            # For each successful result, create the message pair
-            for result in parallel_summary.results:
-                if result.success_flag:
-                    # Extract tool call details
-                    tool_call_id = result.tool_call_id
-                    function_name = result.tool_call.function.name
+            # Collect successful results
+            successful_results = [result for result in parallel_summary.results if result.success_flag]
+            
+            if successful_results:
+                # Create ONE assistant message with ALL tool calls
+                all_tool_calls = []
+                for result in successful_results:
                     function_arguments = json.loads(result.tool_call.function.arguments)
+                    function_arguments[REQUEST_HEARTBEAT_PARAM] = continue_stepping
                     
-                    # Create messages for this tool call
-                    # Note: In parallel execution, we don't have logged_step, so we need to handle this properly
-                    # For now, we'll use None to avoid foreign key violations with NoopStepManager
-                    tool_messages = create_letta_messages_from_llm_response(
+                    tool_call = OpenAIToolCall(
+                        id=result.tool_call_id,
+                        function=OpenAIFunction(
+                            name=result.tool_call.function.name,
+                            arguments=json.dumps(function_arguments),
+                        ),
+                        type="function",
+                    )
+                    all_tool_calls.append(tool_call)
+                
+                # Create single assistant message with all tool calls
+                assistant_message = Message(
+                    role=MessageRole.assistant,
+                    content=reasoning_content if reasoning_content else [],
+                    agent_id=agent_state.id,
+                    model=agent_state.llm_config.model,
+                    tool_calls=all_tool_calls,
+                    tool_call_id=None,  # Only tool response messages have tool_call_id
+                    created_at=get_utc_time(),
+                )
+                all_messages.append(assistant_message)
+                
+                # Create individual tool response messages
+                for result in successful_results:
+                    tool_message = Message(
+                        role=MessageRole.tool,
+                        content=[TextContent(text=package_function_response(
+                            result.execution_result.success_flag, 
+                            result.execution_result.func_return, 
+                            agent_state.timezone
+                        ))],
                         agent_id=agent_state.id,
                         model=agent_state.llm_config.model,
-                        function_name=function_name,
-                        function_arguments=function_arguments,
-                        tool_execution_result=result.execution_result,
-                        tool_call_id=tool_call_id,
-                        function_call_success=result.execution_result.success_flag,
-                        function_response=result.execution_result.func_return,
-                        timezone=agent_state.timezone,
-                        actor=self.actor,
-                        continue_stepping=continue_stepping,
-                        reasoning_content=reasoning_content if result == parallel_summary.results[0] else None,  # Only add reasoning to first message
-                        step_id=None,  # TODO: This should be logged_step.id when we refactor step logging
+                        tool_calls=[],
+                        tool_call_id=result.tool_call_id,
+                        created_at=get_utc_time(),
+                        name=result.tool_call.function.name,
+                        tool_returns=[
+                            ToolReturn(
+                                status=result.execution_result.status,
+                                stderr=result.execution_result.stderr,
+                                stdout=result.execution_result.stdout,
+                            )
+                        ],
                     )
-                    all_messages.extend(tool_messages)
+                    all_messages.append(tool_message)
 
             # Persist all messages
             if all_messages:
