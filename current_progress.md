@@ -2,6 +2,35 @@
 
 ## 🚀 Recent Updates
 
+### ⚠️ Upstream 0.9.1 Analysis - DO NOT MERGE (2025-01-29)
+**Upstream released and then started reverting 0.9.1** - Major structural changes that would break our custom implementations.
+
+**Analysis Results:**
+- Our main branch is already synced with upstream/main (commit f88f8136)
+- Upstream created a revert branch (`upstream/revert-2734-bump-9-1`) suggesting issues with 0.9.1
+- The 0.9.1 release introduced massive changes (~3,100 lines removed vs ~376 added in revert)
+
+**Major Changes in 0.9.1:**
+- MCP OAuth integration with 433+ lines of OAuth utilities
+- Project ID support for blocks and groups (new DB migrations)
+- Significant message schema refactoring
+- Profiling middleware addition
+- Asyncified Jinja templates
+
+**🚫 Recommendation: DO NOT MERGE**
+
+**Reasons:**
+1. **Upstream instability** - The revert branch indicates 0.9.1 has serious issues
+2. **Breaking changes** - OAuth, project IDs, and message schema changes could break our custom features:
+   - Unified send() function
+   - Async-only agent communication
+   - Multimodal message support
+   - Custom logging system
+3. **No critical fixes** - Changes are mostly cloud/enterprise features we don't need
+4. **Wait for stability** - Monitor if upstream merges the revert or releases 0.9.2 with fixes
+
+**Action:** Continue monitoring upstream. Do not merge until they stabilize their main branch.
+
 ### ✅ Upstream 0.8.14 and 0.8.15 Releases Merged (2025-01-17)
 **Successfully merged Letta 0.8.14 and 0.8.15 upstream releases** - Integrated latest features while preserving all custom implementations.
 
