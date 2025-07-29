@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -38,30 +39,28 @@ class FileManager:
     @staticmethod
     def _sanitize_text(text: str) -> str:
         """
-        Sanitize text content by removing characters that are invalid in PostgreSQL UTF-8 encoding.
-        
+        Sanitize text content by removing specific control characters that cause PostgreSQL UTF-8 encoding errors.
+
+        Preserves important formatting characters (tabs, newlines, carriage returns) while removing
+        problematic characters like null bytes that PostgreSQL rejects.
+
         Args:
             text: Raw text content that may contain invalid characters
-            
+
         Returns:
-            Sanitized text safe for database storage
+            Sanitized text safe for PostgreSQL database storage
         """
         if text is None:
             return text
-        
-        # Remove null bytes (0x00) which cause PostgreSQL UTF-8 encoding errors
-        text = text.replace('\x00', '')
-        
-        # Remove other problematic control characters that can cause UTF-8 issues
-        # Remove characters in ranges that PostgreSQL UTF-8 rejects:
-        # - \x01-\x08 (control characters)
-        # - \x0B-\x0C (vertical tab, form feed)  
-        # - \x0E-\x1F (other control characters)
-        # - \x7F (DEL character)
-        import re
-        # Remove control characters except \t (0x09), \n (0x0A), \r (0x0D) which are commonly needed
-        text = re.sub(r'[\x01-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', text)
-        
+
+        # Remove null bytes (0x00) - the primary cause of PostgreSQL UTF-8 errors
+        text = text.replace("\x00", "")
+
+        # Remove other problematic control characters but preserve formatting:
+        # - Keep \t (0x09), \n (0x0A), \r (0x0D) for text formatting
+        # - Remove \x01-\x08, \x0B-\x0C, \x0E-\x1F, \x7F which can cause issues
+        text = re.sub(r"[\x01-\x08\x0B-\x0C\x0E-\x1F\x7F]", "", text)
+
         return text
 
     async def _invalidate_file_caches(self, file_id: str, actor: PydanticUser, original_filename: str = None, source_id: str = None):

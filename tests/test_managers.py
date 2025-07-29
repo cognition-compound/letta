@@ -6356,10 +6356,10 @@ async def test_upsert_file_content_sanitizes_null_bytes(server: SyncServer, defa
 
 
 def test_file_manager_sanitize_text():
-    """Test the _sanitize_text static method directly."""
+    """Test the _sanitize_text static method - removes problematic control chars but preserves formatting."""
     from letta.services.file_manager import FileManager
     
-    # Test with null bytes
+    # Test with null bytes (main PostgreSQL issue)
     assert FileManager._sanitize_text("hello\x00world") == "helloworld"
     
     # Test with multiple null bytes
@@ -6372,14 +6372,21 @@ def test_file_manager_sanitize_text():
     # Test with only null bytes
     assert FileManager._sanitize_text("\x00\x00\x00") == ""
     
-    # Test with other control characters
+    # Test with other problematic control characters
     assert FileManager._sanitize_text("text\x01with\x08control\x0Bchars\x7F") == "textwithcontrolchars"
     
-    # Test that allowed control characters are preserved
+    # Test that formatting characters are PRESERVED (tabs, newlines, carriage returns)
+    # This is crucial for OCR text from documents like invoices
     assert FileManager._sanitize_text("text\twith\ntabs\rand\rcarriage") == "text\twith\ntabs\rand\rcarriage"
     
+    # Test with mixed null bytes and formatting
+    assert FileManager._sanitize_text("Invoice\x00\nLine 1\t$10.00\x00\nLine 2\t$20.00") == "Invoice\nLine 1\t$10.00\nLine 2\t$20.00"
+    
     # Test with no problematic characters (should be unchanged)
-    assert FileManager._sanitize_text("normal text") == "normal text"
+    assert FileManager._sanitize_text("normal text with spaces") == "normal text with spaces"
+    
+    # Test with Unicode letters and numbers (should be preserved)
+    assert FileManager._sanitize_text("café 123 ñoño") == "café 123 ñoño"
     
     # Test with None input
     assert FileManager._sanitize_text(None) is None
