@@ -79,7 +79,7 @@ class MessageCreate(BaseModel):
         MessageRole.system,
         MessageRole.assistant,
     ] = Field(..., description="The role of the participant.")
-    content: Union[str, List[LettaMessageContentUnion]] = Field(
+    content: Union[List[LettaMessageContentUnion], str] = Field(
         ...,
         description="The content of the message.",
         json_schema_extra=get_letta_message_content_union_str_json_schema(),
@@ -110,7 +110,7 @@ class MessageUpdate(BaseModel):
     """Request to update a message"""
 
     role: Optional[MessageRole] = Field(default=None, description="The role of the participant.")
-    content: Optional[Union[str, List[LettaMessageContentUnion]]] = Field(
+    content: Optional[Union[List[LettaMessageContentUnion], str]] = Field(
         default=None,
         description="The content of the message.",
         json_schema_extra=get_letta_message_content_union_str_json_schema(),
