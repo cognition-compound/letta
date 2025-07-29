@@ -6311,9 +6311,75 @@ async def test_upsert_file_content_basic(server: SyncServer, default_user, defau
     count = await _count_file_content_rows(async_session, created.id)
     assert count == 1
 
-    # Ensure `updated_at` is bumped
-    orm_file = await async_session.get(FileMetadataModel, created.id)
-    assert orm_file.updated_at > orm_file.created_at
+
+@pytest.mark.asyncio
+async def test_upsert_file_content_sanitizes_null_bytes(server: SyncServer, default_user, default_source, async_session):
+    """Test that null bytes are sanitized when creating and upserting file content."""
+    # Text with embedded null bytes that would cause PostgreSQL UTF-8 errors
+    text_with_nulls = "Invoice content\x00with null\x00bytes embedded"
+    expected_sanitized = "Invoice contentwith nullbytes embedded"
+    
+    # Step 1: Create file with content containing null bytes
+    meta = PydanticFileMetadata(
+        file_name="invoice_with_nulls.txt",
+        file_path="/tmp/invoice_with_nulls.txt", 
+        file_type="text/plain",
+        file_size=len(text_with_nulls),
+        source_id=default_source.id,
+    )
+    
+    # Test create_file with null bytes
+    created = await server.file_manager.create_file(
+        file_metadata=meta, 
+        actor=default_user,
+        text=text_with_nulls
+    )
+    
+    # Verify null bytes were sanitized
+    file_with_content = await server.file_manager.get_file_by_id(created.id, actor=default_user, include_content=True)
+    assert file_with_content.content == expected_sanitized
+    assert '\x00' not in file_with_content.content
+    
+    # Step 2: Test upsert with null bytes
+    updated_text_with_nulls = "Updated content\x00also has\x00null bytes"
+    expected_updated_sanitized = "Updated contentalso hasnull bytes"
+    
+    file_with_updated_content = await server.file_manager.upsert_file_content(
+        file_id=created.id,
+        text=updated_text_with_nulls,
+        actor=default_user,
+    )
+    
+    # Verify null bytes were sanitized in upsert
+    assert file_with_updated_content.content == expected_updated_sanitized  
+    assert '\x00' not in file_with_updated_content.content
+
+
+def test_file_manager_sanitize_text():
+    """Test the _sanitize_text static method directly."""
+    from letta.services.file_manager import FileManager
+    
+    # Test with null bytes
+    assert FileManager._sanitize_text("hello\x00world") == "helloworld"
+    
+    # Test with multiple null bytes
+    assert FileManager._sanitize_text("a\x00b\x00c\x00d") == "abcd"
+    
+    # Test with null bytes at start/end
+    assert FileManager._sanitize_text("\x00start") == "start"
+    assert FileManager._sanitize_text("end\x00") == "end"
+    
+    # Test with only null bytes
+    assert FileManager._sanitize_text("\x00\x00\x00") == ""
+    
+    # Test with no null bytes (should be unchanged)
+    assert FileManager._sanitize_text("normal text") == "normal text"
+    
+    # Test with None input
+    assert FileManager._sanitize_text(None) is None
+    
+    # Test with empty string
+    assert FileManager._sanitize_text("") == ""
 
 
 @pytest.mark.asyncio

@@ -35,6 +35,23 @@ class DuplicateFileError(Exception):
 class FileManager:
     """Manager class to handle business logic related to files."""
 
+    @staticmethod
+    def _sanitize_text(text: str) -> str:
+        """
+        Sanitize text content by removing null bytes and other characters
+        that are invalid in PostgreSQL UTF-8 encoding.
+        
+        Args:
+            text: Raw text content that may contain invalid characters
+            
+        Returns:
+            Sanitized text safe for database storage
+        """
+        if text is None:
+            return text
+        # Remove null bytes (0x00) which cause PostgreSQL UTF-8 encoding errors
+        return text.replace('\x00', '')
+
     async def _invalidate_file_caches(self, file_id: str, actor: PydanticUser, original_filename: str = None, source_id: str = None):
         """Invalidate all caches related to a file."""
         # TEMPORARILY DISABLED - caching is disabled
@@ -68,7 +85,8 @@ class FileManager:
                 await file_orm.create_async(session, actor=actor, no_commit=True)
 
                 if text is not None:
-                    content_orm = FileContentModel(file_id=file_orm.id, text=text)
+                    sanitized_text = self._sanitize_text(text)
+                    content_orm = FileContentModel(file_id=file_orm.id, text=sanitized_text)
                     await content_orm.create_async(session, actor=actor, no_commit=True)
 
                 await session.commit()
@@ -275,15 +293,18 @@ class FileManager:
         async with db_registry.async_session() as session:
             await FileMetadataModel.read_async(session, file_id, actor)
 
+            # Sanitize text to remove null bytes that cause PostgreSQL UTF-8 errors
+            sanitized_text = self._sanitize_text(text)
+
             dialect_name = session.bind.dialect.name
 
             if dialect_name == "postgresql":
                 stmt = (
                     pg_insert(FileContentModel)
-                    .values(file_id=file_id, text=text)
+                    .values(file_id=file_id, text=sanitized_text)
                     .on_conflict_do_update(
                         index_elements=[FileContentModel.file_id],
-                        set_={"text": text},
+                        set_={"text": sanitized_text},
                     )
                 )
                 await session.execute(stmt)
@@ -294,9 +315,9 @@ class FileManager:
                 existing = result.scalar_one_or_none()
 
                 if existing:
-                    await session.execute(update(FileContentModel).where(FileContentModel.file_id == file_id).values(text=text))
+                    await session.execute(update(FileContentModel).where(FileContentModel.file_id == file_id).values(text=sanitized_text))
                 else:
-                    session.add(FileContentModel(file_id=file_id, text=text))
+                    session.add(FileContentModel(file_id=file_id, text=sanitized_text))
 
             await session.commit()
 
