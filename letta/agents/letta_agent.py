@@ -35,7 +35,7 @@ from letta.log import get_logger, create_lazy_context, lazy_log_enabled
 from letta.orm.enums import ToolType
 from letta.otel.context import get_ctx_attributes, get_filtered_ctx_attributes
 from letta.otel.metric_registry import MetricRegistry
-from letta.otel.tracing import log_event, trace_method, tracer
+from letta.otel.tracing import log_event, safe_add_event, trace_method, tracer
 from letta.schemas.agent import AgentState, UpdateAgent
 from letta.schemas.enums import JobStatus, MessageRole, ProviderType
 from letta.schemas.letta_message import MessageType
@@ -332,7 +332,7 @@ class LettaAgent(BaseAgent):
             # log step time
             now = get_utc_timestamp_ns()
             step_ns = now - step_start
-            agent_step_span.add_event(name="step_ms", attributes={"duration_ms": ns_to_ms(step_ns)})
+            safe_add_event(agent_step_span, name="step_ms", attributes={"duration_ms": ns_to_ms(step_ns)})
             agent_step_span.end()
 
             # Log LLM Trace
@@ -524,7 +524,7 @@ class LettaAgent(BaseAgent):
             # log step time
             now = get_utc_timestamp_ns()
             step_ns = now - step_start
-            agent_step_span.add_event(name="step_ms", attributes={"duration_ms": ns_to_ms(step_ns)})
+            safe_add_event(agent_step_span, name="step_ms", attributes={"duration_ms": ns_to_ms(step_ns)})
             agent_step_span.end()
 
             # Log LLM Trace
@@ -742,7 +742,7 @@ class LettaAgent(BaseAgent):
             # log total step time
             now = get_utc_timestamp_ns()
             step_ns = now - step_start
-            agent_step_span.add_event(name="step_ms", attributes={"duration_ms": ns_to_ms(step_ns)})
+            safe_add_event(agent_step_span, name="step_ms", attributes={"duration_ms": ns_to_ms(step_ns)})
             agent_step_span.end()
 
             # TODO (cliandy): the stream POST request span has ended at this point, we should tie this to the stream
@@ -838,7 +838,7 @@ class LettaAgent(BaseAgent):
                     timer.elapsed_ms,
                     dict(get_filtered_ctx_attributes(), **{"model.name": agent_state.llm_config.model}),
                 )
-                agent_step_span.add_event(name="llm_request_ms", attributes={"duration_ms": timer.elapsed_ms})
+                safe_add_event(agent_step_span, name="llm_request_ms", attributes={"duration_ms": timer.elapsed_ms})
 
                 return request_data, response, current_in_context_messages, new_in_context_messages, valid_tool_names
 
@@ -1445,7 +1445,7 @@ class LettaAgent(BaseAgent):
 
         if agent_step_span:
             start_time = get_utc_timestamp_ns()
-            agent_step_span.add_event(name="tool_execution_started")
+            safe_add_event(agent_step_span, name="tool_execution_started")
 
         sandbox_env_vars = {var.key: var.value for var in agent_state.tool_exec_environment_variables}
         tool_execution_manager = ToolExecutionManager(

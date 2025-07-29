@@ -253,7 +253,7 @@ class ToolExecutionManager:
                     failed_count += 1
 
         # Log metrics for parallel execution
-        if agent_step_span:
+        if agent_step_span and agent_step_span.is_recording():
             agent_step_span.add_event(
                 name="parallel_tool_execution_completed",
                 attributes={

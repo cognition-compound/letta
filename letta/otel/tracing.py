@@ -338,6 +338,20 @@ def log_event(name: str, attributes: Optional[Dict[str, Any]] = None, timestamp:
         current_span.add_event(name=name, attributes=attributes, timestamp=timestamp)
 
 
+def safe_add_event(span, name: str, attributes: dict = None, timestamp: int = None) -> None:
+    """
+    Safely add an event to a span, checking if the span is still recording to prevent OTel warnings.
+    
+    Args:
+        span: The OpenTelemetry span to add the event to
+        name: The event name
+        attributes: Optional event attributes
+        timestamp: Optional timestamp
+    """
+    if span and span.is_recording():
+        span.add_event(name=name, attributes=attributes, timestamp=timestamp)
+
+
 def get_trace_id() -> Optional[str]:
     span = trace.get_current_span()
     if span and span.get_span_context().trace_id:

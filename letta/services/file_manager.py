@@ -38,8 +38,7 @@ class FileManager:
     @staticmethod
     def _sanitize_text(text: str) -> str:
         """
-        Sanitize text content by removing null bytes and other characters
-        that are invalid in PostgreSQL UTF-8 encoding.
+        Sanitize text content by removing characters that are invalid in PostgreSQL UTF-8 encoding.
         
         Args:
             text: Raw text content that may contain invalid characters
@@ -49,8 +48,21 @@ class FileManager:
         """
         if text is None:
             return text
+        
         # Remove null bytes (0x00) which cause PostgreSQL UTF-8 encoding errors
-        return text.replace('\x00', '')
+        text = text.replace('\x00', '')
+        
+        # Remove other problematic control characters that can cause UTF-8 issues
+        # Remove characters in ranges that PostgreSQL UTF-8 rejects:
+        # - \x01-\x08 (control characters)
+        # - \x0B-\x0C (vertical tab, form feed)  
+        # - \x0E-\x1F (other control characters)
+        # - \x7F (DEL character)
+        import re
+        # Remove control characters except \t (0x09), \n (0x0A), \r (0x0D) which are commonly needed
+        text = re.sub(r'[\x01-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', text)
+        
+        return text
 
     async def _invalidate_file_caches(self, file_id: str, actor: PydanticUser, original_filename: str = None, source_id: str = None):
         """Invalidate all caches related to a file."""

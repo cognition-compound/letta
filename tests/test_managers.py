@@ -6372,7 +6372,13 @@ def test_file_manager_sanitize_text():
     # Test with only null bytes
     assert FileManager._sanitize_text("\x00\x00\x00") == ""
     
-    # Test with no null bytes (should be unchanged)
+    # Test with other control characters
+    assert FileManager._sanitize_text("text\x01with\x08control\x0Bchars\x7F") == "textwithcontrolchars"
+    
+    # Test that allowed control characters are preserved
+    assert FileManager._sanitize_text("text\twith\ntabs\rand\rcarriage") == "text\twith\ntabs\rand\rcarriage"
+    
+    # Test with no problematic characters (should be unchanged)
     assert FileManager._sanitize_text("normal text") == "normal text"
     
     # Test with None input
