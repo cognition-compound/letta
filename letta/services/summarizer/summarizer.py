@@ -125,7 +125,7 @@ class Summarizer:
         if self.summarizer_agent is None:
             logger.warning(
                 "PARTIAL_EVICT_MESSAGE_BUFFER mode requires a summarizer_agent, but none is available. "
-                "Falling back to STATIC_MESSAGE_BUFFER mode. This typically happens when OpenAI API key is not configured."
+                "Falling back to STATIC_MESSAGE_BUFFER mode. This typically happens when no LLM provider is configured."
             )
             return self._static_buffer_summarization(
                 in_context_messages,

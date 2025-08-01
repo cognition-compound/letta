@@ -121,8 +121,10 @@ class LettaAgent(BaseAgent):
         self.max_summarization_retries = max_summarization_retries
         self.logger = get_logger(agent_id)
 
-        # TODO: Expand to more
-        if enable_summarization and model_settings.openai_api_key:
+        # Create summarization agent if enabled
+        # The EphemeralSummaryAgent uses the same LLM config as the main agent,
+        # so if the main agent works, summarization will work too
+        if enable_summarization:
             self.summarization_agent = EphemeralSummaryAgent(
                 target_block_label=self.summary_block_label,
                 agent_id=agent_id,
