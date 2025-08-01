@@ -14,8 +14,9 @@ logger = get_logger(__name__)
 
 # TODO: Get rid of Async prefix on this class name once we deprecate old sync code
 class AsyncBaseMCPClient:
-    def __init__(self, server_config: BaseServerConfig):
+    def __init__(self, server_config: BaseServerConfig, agent_id: Optional[str] = None):
         self.server_config = server_config
+        self.agent_id = agent_id  # Store agent_id for authorization
         self.exit_stack = AsyncExitStack()
         self.session: Optional[ClientSession] = None
         self.initialized = False
@@ -53,28 +54,23 @@ class AsyncBaseMCPClient:
         response = await self.session.list_tools()
         return response.tools
 
-    async def execute_tool(self, tool_name: str, tool_args: dict, agent_id: Optional[str] = None) -> Tuple[str, bool]:
+    async def execute_tool(self, tool_name: str, tool_args: dict) -> Tuple[str, bool]:
         self._check_initialized()
 
-        # Inject agent_id into tool arguments for security purposes
         if tool_args is None:
             tool_args = {}
 
-        # Add agent_id to the tool arguments if provided
-        if agent_id is not None:
-            # Create a copy to avoid modifying the original
-            tool_args = tool_args.copy()
-            tool_args["_letta_agent_id"] = agent_id
-
+        # Note: agent_id is passed via headers/env vars in the transport layer,
+        # not as a tool parameter. See _initialize_connection in subclasses.
         result = await self.session.call_tool(tool_name, tool_args)
         parsed_content = []
         for content_piece in result.content:
             if isinstance(content_piece, TextContent):
                 parsed_content.append(content_piece.text)
-                print("parsed_content (text)", parsed_content)
+                # logger.debug(f"parsed_content (text): {parsed_content}")
             else:
                 parsed_content.append(str(content_piece))
-                print("parsed_content (other)", parsed_content)
+                # logger.debug(f"parsed_content (other): {parsed_content}")
         if len(parsed_content) > 0:
             final_content = " ".join(parsed_content)
         else:

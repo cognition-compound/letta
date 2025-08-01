@@ -1,6 +1,7 @@
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from letta.constants import MCP_AGENT_ID_ENV_VAR
 from letta.functions.mcp_client.types import StdioServerConfig
 from letta.log import get_logger
 from letta.services.mcp.base_client import AsyncBaseMCPClient
@@ -14,7 +15,13 @@ class AsyncStdioMCPClient(AsyncBaseMCPClient):
         args = [arg.split() for arg in server_config.args]
         # flatten
         args = [arg for sublist in args for arg in sublist]
-        server_params = StdioServerParameters(command=server_config.command, args=args, env=server_config.env)
+        
+        # For stdio transport, pass agent_id as environment variable
+        env = server_config.env.copy() if server_config.env else {}
+        if self.agent_id:
+            env[MCP_AGENT_ID_ENV_VAR] = self.agent_id
+        
+        server_params = StdioServerParameters(command=server_config.command, args=args, env=env)
         stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
         self.stdio, self.write = stdio_transport
         self.session = await self.exit_stack.enter_async_context(ClientSession(self.stdio, self.write))

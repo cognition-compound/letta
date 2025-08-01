@@ -1,6 +1,7 @@
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 
+from letta.constants import MCP_AGENT_ID_HEADER
 from letta.functions.mcp_client.types import SSEServerConfig
 from letta.log import get_logger
 from letta.services.mcp.base_client import AsyncBaseMCPClient
@@ -20,6 +21,10 @@ class AsyncSSEMCPClient(AsyncBaseMCPClient):
 
         if server_config.auth_header and server_config.auth_token:
             headers[server_config.auth_header] = server_config.auth_token
+        
+        # Add agent_id header for authorization if provided
+        if self.agent_id:
+            headers[MCP_AGENT_ID_HEADER] = self.agent_id
 
         sse_cm = sse_client(url=server_config.server_url, headers=headers if headers else None)
         sse_transport = await self.exit_stack.enter_async_context(sse_cm)

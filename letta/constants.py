@@ -17,6 +17,8 @@ COMPOSIO_TOOL_TAG_NAME = "composio"
 
 MCP_CONFIG_NAME = "mcp_config.json"
 MCP_TOOL_TAG_NAME_PREFIX = "mcp"  # full format, mcp:server_name
+MCP_AGENT_ID_HEADER = "X-Letta-Agent-ID"  # HTTP header for agent identification
+MCP_AGENT_ID_ENV_VAR = "LETTA_AGENT_ID"  # Environment variable for agent identification
 
 LETTA_CORE_TOOL_MODULE_NAME = "letta.functions.function_sets.base"
 LETTA_MULTI_AGENT_TOOL_MODULE_NAME = "letta.functions.function_sets.multi_agent"

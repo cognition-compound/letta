@@ -1,6 +1,7 @@
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
+from letta.constants import MCP_AGENT_ID_HEADER
 from letta.functions.mcp_client.types import BaseServerConfig, StreamableHTTPServerConfig
 from letta.log import get_logger
 from letta.services.mcp.base_client import AsyncBaseMCPClient
@@ -22,6 +23,10 @@ class AsyncStreamableHTTPMCPClient(AsyncBaseMCPClient):
             # Add auth header if specified
             if server_config.auth_header and server_config.auth_token:
                 headers[server_config.auth_header] = server_config.auth_token
+            
+            # Add agent_id header for authorization if provided
+            if self.agent_id:
+                headers[MCP_AGENT_ID_HEADER] = self.agent_id
 
             # Use streamablehttp_client context manager with headers if provided
             if headers:

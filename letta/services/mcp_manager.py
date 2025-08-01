@@ -80,17 +80,17 @@ class MCPManager:
 
         if isinstance(server_config, SSEServerConfig):
             # mcp_client = AsyncSSEMCPClient(server_config=server_config)
-            async with AsyncSSEMCPClient(server_config=server_config) as mcp_client:
+            async with AsyncSSEMCPClient(server_config=server_config, agent_id=agent_id) as mcp_client:
                 result, success = await mcp_client.execute_tool(tool_name, tool_args)
                 logger.info(f"MCP Result: {result}, Success: {success}")
                 return result, success
         elif isinstance(server_config, StdioServerConfig):
-            async with AsyncStdioMCPClient(server_config=server_config) as mcp_client:
+            async with AsyncStdioMCPClient(server_config=server_config, agent_id=agent_id) as mcp_client:
                 result, success = await mcp_client.execute_tool(tool_name, tool_args)
                 logger.info(f"MCP Result: {result}, Success: {success}")
                 return result, success
         elif isinstance(server_config, StreamableHTTPServerConfig):
-            async with AsyncStreamableHTTPMCPClient(server_config=server_config) as mcp_client:
+            async with AsyncStreamableHTTPMCPClient(server_config=server_config, agent_id=agent_id) as mcp_client:
                 result, success = await mcp_client.execute_tool(tool_name, tool_args)
                 logger.info(f"MCP Result: {result}, Success: {success}")
                 return result, success
