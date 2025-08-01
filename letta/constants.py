@@ -199,7 +199,7 @@ ERROR_MESSAGE_PREFIX = "Error"
 NON_USER_MSG_PREFIX = "[This is an automated system message hidden from the user] "
 
 CORE_MEMORY_LINE_NUMBER_WARNING = (
-    "# NOTE: Line numbers shown below are to help during editing. Do NOT include line number prefixes in your memory edit tool calls."
+    "# NOTE: When using memory edit tools, provide the exact text to replace without any line number prefixes."
 )
 
 
