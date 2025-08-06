@@ -121,14 +121,23 @@ class TestEnhancedMessaging:
             assert result == "Message sent successfully"
 
     def test_universal_send_to_group(self, mock_agent):
-        """Test universal send function routing to group."""
-        with patch("letta.functions.function_sets.multi_agent.send_message_to_all_agents_in_group") as mock_send_group:
+        """Test universal send function routing to specific group (fixed bug)."""
+        with patch("letta.functions.function_sets.multi_agent.send_message_to_specific_group") as mock_send_group:
             mock_send_group.return_value = ["Response 1", "Response 2"]
 
             result = send(mock_agent, "Group update", to="group:my-group")
 
-            mock_send_group.assert_called_once_with(mock_agent, "Group update")
-            assert result == "Message sent to 2 agents in group"
+            # Fixed: Now correctly passes group_id parameter
+            mock_send_group.assert_called_once_with(mock_agent, "Group update", "my-group")
+            assert result == "Message sent to 2 agents in group my-group"
+
+    def test_universal_send_to_specific_group_authorization_error(self, mock_agent):
+        """Test universal send function with group authorization error."""
+        with patch("letta.functions.function_sets.multi_agent.send_message_to_specific_group") as mock_send_group:
+            mock_send_group.side_effect = ValueError("Cannot access group 'restricted-group': NoResultFound")
+
+            with pytest.raises(ValueError, match="Cannot access group 'restricted-group'"):
+                send(mock_agent, "Restricted message", to="group:restricted-group")
 
     def test_universal_send_broadcast(self, mock_agent):
         """Test universal send function broadcasting by tag."""

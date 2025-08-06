@@ -464,6 +464,80 @@ async def _send_message_to_all_agents_in_group_async(sender_agent: "Agent", mess
     return final
 
 
+async def _send_message_to_specific_group_async(sender_agent: "Agent", message: str, group_id: str) -> List[str]:
+    """
+    Sends a message to all agents in a specific group by group ID.
+    
+    Args:
+        sender_agent: The agent sending the message
+        message: The message content to send
+        group_id: The specific group ID to target
+        
+    Returns:
+        List[str]: Responses from agents in the specified group
+        
+    Raises:
+        ValueError: If group doesn't exist or sender lacks access
+    """
+    server = get_letta_server()
+
+    # Get the specific group by ID with authorization check
+    try:
+        group = await server.group_manager.retrieve_group_async(group_id=group_id, actor=sender_agent.user)
+    except Exception as e:
+        raise ValueError(f"Cannot access group '{group_id}': {str(e)}")
+
+    # Authorization check: sender must be in same organization as group
+    # (This is implicitly handled by retrieve_group_async using actor=sender_agent.user)
+    
+    # Optional: Additional check if sender must be member or manager of target group
+    # Commenting out for now to match existing permission model where any agent can send to any other agent in org
+    # if (sender_agent.agent_state.id not in group.agent_ids and 
+    #     sender_agent.agent_state.id != group.manager_agent_id):
+    #     raise ValueError(f"Agent {sender_agent.agent_state.id} is not authorized to send to group {group_id}")
+
+    if not group.agent_ids:
+        return []  # Empty group, no agents to send to
+
+    augmented_message = (
+        f"[Incoming message from agent with ID '{sender_agent.agent_state.id}' - to reply to this message, "
+        f"make sure to use the 'send_message' at the end, and the system will notify the sender of your response] "
+        f"{message}"
+    )
+
+    # Use the specified group's agent IDs, not sender's group
+    worker_agents_ids = group.agent_ids
+    worker_agents = [server.agent_manager.get_agent_by_id(agent_id=agent_id, actor=sender_agent.user) for agent_id in worker_agents_ids]
+
+    # Create a system message
+    messages = [MessageCreate(role=MessageRole.system, content=augmented_message, name=sender_agent.agent_state.name)]
+
+    # Possibly limit concurrency to avoid meltdown:
+    sem = asyncio.Semaphore(settings.multi_agent_concurrent_sends)
+
+    async def _send_single(agent_state):
+        async with sem:
+            return await _async_send_message_with_retries(
+                server=server,
+                sender_agent=sender_agent,
+                target_agent_id=agent_state.id,
+                messages=messages,
+                max_retries=3,
+                timeout=20 * 60,  # 20 minutes
+            )
+
+    tasks = [asyncio.create_task(_send_single(agent_state)) for agent_state in worker_agents]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    final = []
+    for r in results:
+        if isinstance(r, Exception):
+            final.append(str(r))
+        else:
+            final.append(r)
+
+    return final
+
+
 def generate_model_from_args_json_schema(schema: Dict[str, Any]) -> Type[BaseModel]:
     """Creates a Pydantic model from a JSON schema.
 

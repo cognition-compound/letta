@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, List
 
 from letta.functions.helpers import (
     _send_message_to_all_agents_in_group_async,
+    _send_message_to_specific_group_async,
     extract_send_message_from_steps_messages,
     fire_and_forget_send_to_agent,
 )
@@ -101,6 +102,25 @@ def send_message_to_all_agents_in_group(self: "Agent", message: str) -> List[str
     return asyncio.run(_send_message_to_all_agents_in_group_async(self, message))
 
 
+def send_message_to_specific_group(self: "Agent", message: str, group_id: str) -> List[str]:
+    """
+    Sends a message to all agents in a specific group by group ID.
+
+    Args:
+        message (str): The content of the message to be sent to each agent in the group.
+        group_id (str): The ID of the specific group to target.
+
+    Returns:
+        List[str]: A list of responses from the agents in the specified group. Each
+        response corresponds to a single agent. Agents that do not respond will not have an entry
+        in the returned list.
+
+    Raises:
+        ValueError: If the group doesn't exist or the sender lacks access to it.
+    """
+    return asyncio.run(_send_message_to_specific_group_async(self, message, group_id))
+
+
 def send_message_to_agent_async(self: "Agent", message: str, other_agent_id: str) -> str:
     """
     Sends a message to a specific Letta agent within the same organization without waiting for a response. The sender's identity is automatically included in a clean system message. This function is designed for one-way notifications or fire-and-forget messaging.
@@ -177,10 +197,9 @@ def send(self: "Agent", message: str, to: str) -> str:
 
     elif to.startswith("group:"):
         group_id = to.split(":", 1)[1]
-        # Note: send_message_to_all_agents_in_group doesn't use group_id parameter
-        # It sends to all agents in the sender's group
-        responses = send_message_to_all_agents_in_group(self, message)
-        return f"Message sent to {len(responses)} agents in group"
+        # Fixed: Now actually sends to the specified group instead of sender's group
+        responses = send_message_to_specific_group(self, message, group_id)
+        return f"Message sent to {len(responses)} agents in group {group_id}"
 
     elif to.startswith("broadcast:"):
         tag = to.split(":", 1)[1]
