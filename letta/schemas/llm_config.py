@@ -179,6 +179,17 @@ class LLMConfig(BaseModel):
                 context_window=256000,
                 max_tokens=8192,
             )
+        elif model_name == "gpt-5":
+            return cls(
+                model="gpt-5",
+                model_endpoint_type="openai",
+                model_endpoint="https://api.openai.com/v1",
+                model_wrapper=None,
+                context_window=400000,
+                max_tokens=128000,
+                # GPT-5 is a reasoning model, so no inner thoughts in kwargs
+                put_inner_thoughts_in_kwargs=False,
+            )
         elif model_name == "letta":
             return cls(
                 model="memgpt-openai",

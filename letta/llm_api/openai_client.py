@@ -45,7 +45,8 @@ def is_openai_reasoning_model(model: str) -> bool:
     """Utility function to check if the model is a 'reasoner'"""
 
     # NOTE: needs to be updated with new model releases
-    is_reasoning = model.startswith("o1") or model.startswith("o3") or model.startswith("o4")
+    # GPT-5 is a reasoning model according to OpenAI docs
+    is_reasoning = model.startswith("o1") or model.startswith("o2") or model.startswith("o3") or model.startswith("o4") or model.startswith("gpt-5")
     return is_reasoning
 
 

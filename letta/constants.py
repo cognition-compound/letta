@@ -176,7 +176,7 @@ REQUEST_HEARTBEAT_DESCRIPTION = "Request an immediate heartbeat after function e
 
 
 # Structured output models
-STRUCTURED_OUTPUT_MODELS = {"gpt-4o", "gpt-4o-mini"}
+STRUCTURED_OUTPUT_MODELS = {"gpt-4o", "gpt-4o-mini", "gpt-5"}
 
 # LOGGER_LOG_LEVEL is use to convert Text to Logging level value for logging mostly for Cli input to setting level
 LOGGER_LOG_LEVELS = {"CRITICAL": CRITICAL, "ERROR": ERROR, "WARN": WARN, "WARNING": WARNING, "INFO": INFO, "DEBUG": DEBUG, "NOTSET": NOTSET}
