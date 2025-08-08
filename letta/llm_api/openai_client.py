@@ -296,17 +296,33 @@ class OpenAIClient(LLMClientBase):
         output_items = response_data.get("output", [])
         choices = []
 
-        # Handle GPT-5 responses which may have multiple output types
+        # Separate different types of output items
         message_items = []
+        function_call_items = []
         reasoning_items = []
 
         for item in output_items:
             if item.get("type") == "message":
                 message_items.append(item)
+            elif item.get("type") == "function_call":
+                function_call_items.append(item)
             elif item.get("type") == "reasoning":
                 reasoning_items.append(item)
 
-        # Process message items (standard responses)
+        # Convert function_call items to Chat Completions tool_calls format
+        tool_calls = []
+        for func_call in function_call_items:
+            tool_call = {
+                "id": func_call.get("call_id", f"call_{len(tool_calls)}"),
+                "type": "function",
+                "function": {
+                    "name": func_call.get("name", ""),
+                    "arguments": func_call.get("arguments", "{}")
+                }
+            }
+            tool_calls.append(tool_call)
+
+        # Process message items (standard responses) 
         for i, item in enumerate(message_items):
             content = self._convert_response_content(item.get("content", []))
 
@@ -315,15 +331,29 @@ class OpenAIClient(LLMClientBase):
                 "message": {
                     "role": item.get("role", "assistant"),
                     "content": content,
-                    "tool_calls": item.get("tool_calls"),  # Should be compatible
+                    "tool_calls": tool_calls if tool_calls else None,  # Add converted tool calls
                     "reasoning_content": self._extract_reasoning_content(response_data),
                 },
                 "finish_reason": response_data.get("status", "stop"),  # Map status to finish_reason
             }
             choices.append(choice)
 
+        # Handle function calls without message (tool-only response)
+        if not message_items and tool_calls:
+            choice = {
+                "index": 0,
+                "message": {
+                    "role": "assistant", 
+                    "content": None,  # No text content, only tool calls
+                    "tool_calls": tool_calls,
+                    "reasoning_content": self._extract_reasoning_content(response_data),
+                },
+                "finish_reason": response_data.get("status", "stop"),
+            }
+            choices.append(choice)
+
         # Handle GPT-5 reasoning-only responses (when no message items exist)
-        if not message_items and reasoning_items:
+        elif not message_items and not tool_calls and reasoning_items:
             # Create a synthetic message from reasoning for backward compatibility
             reasoning_content = self._extract_reasoning_content(response_data)
 
@@ -437,15 +467,15 @@ class OpenAIClient(LLMClientBase):
 
         # Handle tools (Responses API format differs from Chat Completions API)
         if tools:
-            # For Responses API, try direct tool format first
+            # Responses API uses FLAT tool format (no nesting!)
             converted_tools = []
             for tool in tools:
-                # Responses API might expect direct function definition with type
+                # Create tool in flat format (not nested like Chat Completions API)
                 converted_tool = {
                     "type": "function",
                     "name": tool["name"],
                     "description": tool["description"],
-                    "parameters": tool["parameters"],
+                    "parameters": tool["parameters"].copy(),  # Copy to avoid modifying original
                 }
 
                 # Ensure Responses API strict mode compatibility
@@ -461,7 +491,7 @@ class OpenAIClient(LLMClientBase):
                 if supports_structured_output(llm_config):
                     try:
                         structured_output_version = convert_to_structured_output(tool)
-                        # Update the structured output in the converted tool
+                        # Update the tool with structured output
                         converted_tool.update(structured_output_version)
                     except ValueError as e:
                         logger.warning(f"Failed to convert tool function to structured output, tool={tool}, error={e}")
@@ -600,6 +630,8 @@ class OpenAIClient(LLMClientBase):
             for item in output_items:
                 if item.get("type") == "message" and item.get("tool_calls"):
                     tool_calls_count += len(item["tool_calls"])
+                elif item.get("type") == "function_call":
+                    tool_calls_count += 1
 
             response_summary["tool_calls_returned"] = tool_calls_count
 
@@ -613,6 +645,11 @@ class OpenAIClient(LLMClientBase):
                         first_tool = item["tool_calls"][0]
                         logger.debug(
                             f"[API_RESPONSE] First tool call: name='{first_tool.get('function', {}).get('name')}', id='{first_tool.get('id')}'"
+                        )
+                        break
+                    elif item.get("type") == "function_call":
+                        logger.debug(
+                            f"[API_RESPONSE] First function call: name='{item.get('name')}', args='{item.get('arguments')}'"
                         )
                         break
             else:
