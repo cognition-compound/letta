@@ -7,8 +7,8 @@ from typing import Optional, Union
 
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
-from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall as OpenAIToolCall
-from openai.types.chat.chat_completion_message_tool_call import Function as OpenAIFunction
+from openai.types.chat.chat_completion_message_function_tool_call import ChatCompletionMessageFunctionToolCall as OpenAIToolCall
+from openai.types.chat.chat_completion_message_function_tool_call import Function as OpenAIFunction
 from opentelemetry.trace import Span
 
 from letta.agents.base_agent import BaseAgent

@@ -416,8 +416,8 @@ def package_initial_message_sequence(
             import json
             import uuid
 
-            from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall as OpenAIToolCall
-            from openai.types.chat.chat_completion_message_tool_call import Function as OpenAIFunction
+            from openai.types.chat.chat_completion_message_function_tool_call import ChatCompletionMessageFunctionToolCall as OpenAIToolCall
+            from openai.types.chat.chat_completion_message_function_tool_call import Function as OpenAIFunction
 
             from letta.constants import DEFAULT_MESSAGE_TOOL
 
