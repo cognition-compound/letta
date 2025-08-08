@@ -100,16 +100,52 @@ def azure_openai_get_embeddings_model_list(base_url: str, api_key: str, api_vers
     return model_options
 
 
+def prepare_azure_openai_payload(chat_completion_request: ChatCompletionRequest):
+    """Prepare payload for Azure OpenAI API request.
+    
+    Azure OpenAI currently uses Chat Completions API format, so we use
+    the original payload format instead of the Responses API format.
+    """
+    import os
+    from letta.llm_api.openai_client import supports_parallel_tool_calling
+    
+    data = chat_completion_request.model_dump(exclude_none=True)
+
+    # add check otherwise will cause error: "Invalid value for 'parallel_tool_calls': 'parallel_tool_calls' is only allowed when 'tools' are specified."
+    if chat_completion_request.tools is not None:
+        # Enable parallel tool calls based on environment variable
+        enable_parallel = os.getenv("LETTA_ENABLE_PARALLEL_TOOL_CALLS", "true").lower() == "true"
+        data["parallel_tool_calls"] = enable_parallel
+
+    # If functions == None, strip from the payload
+    if "functions" in data and data["functions"] is None:
+        data.pop("functions")
+        data.pop("function_call", None)  # extra safe,  should exist always (default="auto")
+
+    if "tools" in data and data["tools"] is None:
+        data.pop("tools")
+        data.pop("tool_choice", None)  # extra safe,  should exist always (default="auto")
+
+    if not supports_parallel_tool_calling(chat_completion_request.model):
+        data.pop("parallel_tool_calls", None)
+
+    return data
+
+
 def azure_openai_chat_completions_request(
     model_settings: ModelSettings, llm_config: LLMConfig, chat_completion_request: ChatCompletionRequest
 ) -> ChatCompletionResponse:
-    """https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#chat-completions"""
+    """https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#chat-completions
+    
+    Note: Azure OpenAI currently uses Chat Completions API format, not Responses API.
+    """
 
     assert model_settings.azure_api_key is not None, "Missing required api key field when calling Azure OpenAI"
     assert model_settings.azure_api_version is not None, "Missing required api version field when calling Azure OpenAI"
     assert model_settings.azure_base_url is not None, "Missing required base url field when calling Azure OpenAI"
 
-    data = prepare_openai_payload(chat_completion_request)
+    # Use Azure-specific payload preparation to maintain Chat Completions format
+    data = prepare_azure_openai_payload(chat_completion_request)
     client = AzureOpenAI(
         api_key=model_settings.azure_api_key, api_version=model_settings.azure_api_version, azure_endpoint=model_settings.azure_base_url
     )

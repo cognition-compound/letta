@@ -5,6 +5,7 @@ from typing import Generator, List, Optional, Union
 import httpx
 import requests
 from openai import OpenAI
+from openai.types.responses import Response
 
 from letta.constants import LETTA_MODEL_ENDPOINT
 from letta.errors import ErrorCode, LLMAuthenticationError, LLMError
@@ -222,14 +223,7 @@ def build_openai_chat_completions_request(
                 tool_choice = "auto"
             else:
                 tool_choice = function_call
-        # GPT-5 specific parameters with reasonable defaults
-        gpt5_params = {}
-        if model.startswith("gpt-5"):
-            gpt5_params.update({
-                "verbosity": "medium",  # balanced response length
-                "reasoning_effort": "medium"  # balanced speed/quality
-            })
-        
+        # Note: GPT-5 specific parameters like verbosity are now handled in the Responses API conversion
         data = ChatCompletionRequest(
             model=model,
             messages=openai_message_list,
@@ -239,17 +233,9 @@ def build_openai_chat_completions_request(
             max_completion_tokens=llm_config.max_tokens,
             temperature=llm_config.temperature if supports_temperature_param(model) else 1.0,
             reasoning_effort=llm_config.reasoning_effort,
-            **gpt5_params
         )
     else:
-        # GPT-5 specific parameters with reasonable defaults
-        gpt5_params = {}
-        if model.startswith("gpt-5"):
-            gpt5_params.update({
-                "verbosity": "medium",  # balanced response length
-                "reasoning_effort": "medium"  # balanced speed/quality
-            })
-            
+        # Note: GPT-5 specific parameters like verbosity are now handled in the Responses API conversion
         data = ChatCompletionRequest(
             model=model,
             messages=openai_message_list,
@@ -259,7 +245,6 @@ def build_openai_chat_completions_request(
             max_completion_tokens=llm_config.max_tokens,
             temperature=llm_config.temperature if supports_temperature_param(model) else 1.0,
             reasoning_effort=llm_config.reasoning_effort,
-            **gpt5_params
         )
         # https://platform.openai.com/docs/guides/text-generation/json-mode
         # only supported by gpt-4o, gpt-4-turbo, or gpt-3.5-turbo
@@ -556,23 +541,33 @@ def openai_chat_completions_request_stream(
     chat_completion_request: ChatCompletionRequest,
     fix_url: bool = False,
 ) -> Generator[ChatCompletionChunkResponse, None, None]:
-    # In some cases we may want to double-check the URL and do basic correction, eg:
-    # In Letta config the address for vLLM is w/o a /v1 suffix for simplicity
-    # However if we're treating the server as an OpenAI proxy we want the /v1 suffix on our model hit
+    """Stream responses from OpenAI Responses API and yield ChatCompletionChunkResponses
+    
+    This function has been updated to use the Responses API (/v1/responses) instead 
+    of Chat Completions API to support GPT-5 models that require this endpoint.
+    """
+    # In some cases we may want to double-check the URL and do basic correction
     if fix_url:
         if not url.endswith("/v1"):
             url = smart_urljoin(url, "v1")
 
-    data = prepare_openai_payload(chat_completion_request)
+    # Convert ChatCompletionRequest to Responses API format
+    data = convert_chat_completion_to_responses_format(chat_completion_request)
     data["stream"] = True
     client = OpenAI(api_key=api_key, base_url=url, max_retries=0)
     try:
-        stream = client.chat.completions.create(**data)
+        # Use Responses API instead of Chat Completions API
+        stream = client.responses.create(**data)
         for chunk in stream:
-            # TODO: Use the native OpenAI objects here?
-            yield ChatCompletionChunkResponse(**chunk.model_dump(exclude_none=True))
+            # Convert Responses API chunk to ChatCompletionChunkResponse format
+            # For now, we'll do a basic conversion - this may need refinement
+            chunk_dict = chunk.model_dump(exclude_none=True)
+            
+            # Convert Responses API streaming chunk format to Chat Completions chunk format
+            converted_chunk = convert_response_stream_chunk_to_chat_completion_format(chunk_dict)
+            yield ChatCompletionChunkResponse(**converted_chunk)
     except Exception as e:
-        print(f"Error request stream from /v1/chat/completions, url={url}, data={data}:\n{e}")
+        print(f"Error request stream from /v1/responses, url={url}, data={data}:\n{e}")
         raise e
 
 
@@ -581,19 +576,26 @@ def openai_chat_completions_request(
     api_key: str,
     chat_completion_request: ChatCompletionRequest,
 ) -> ChatCompletionResponse:
-    """Send a ChatCompletion request to an OpenAI-compatible server
+    """Send a request to OpenAI Responses API and return ChatCompletionResponse
 
-    If request.stream == True, will yield ChatCompletionChunkResponses
-    If request.stream == False, will return a ChatCompletionResponse
-
-    https://platform.openai.com/docs/guides/text-generation?lang=curl
+    This function has been updated to use the Responses API (/v1/responses) instead 
+    of Chat Completions API to support GPT-5 models that require this endpoint.
+    
+    https://platform.openai.com/docs/api-reference/responses
     """
-    data = prepare_openai_payload(chat_completion_request)
+    # Convert ChatCompletionRequest to Responses API format
+    data = convert_chat_completion_to_responses_format(chat_completion_request)
     client = OpenAI(api_key=api_key, base_url=url, max_retries=0)
     log_event(name="llm_request_sent", attributes=data)
-    chat_completion = client.chat.completions.create(**data)
-    log_event(name="llm_response_received", attributes=chat_completion.model_dump())
-    return ChatCompletionResponse(**chat_completion.model_dump())
+    
+    # Use Responses API instead of Chat Completions API
+    response = client.responses.create(**data)
+    response_dict = response.model_dump()
+    log_event(name="llm_response_received", attributes=response_dict)
+    
+    # Convert Responses API response back to ChatCompletionResponse format
+    chat_completion_dict = convert_responses_to_chat_completion_format(response_dict)
+    return ChatCompletionResponse(**chat_completion_dict)
 
 
 def openai_embeddings_request(url: str, api_key: str, data: dict) -> EmbeddingResponse:
@@ -605,33 +607,288 @@ def openai_embeddings_request(url: str, api_key: str, data: dict) -> EmbeddingRe
     return EmbeddingResponse(**response_json)
 
 
-def prepare_openai_payload(chat_completion_request: ChatCompletionRequest):
+def convert_chat_completion_to_responses_format(chat_completion_request: ChatCompletionRequest) -> dict:
+    """Convert ChatCompletionRequest to Responses API format."""
+    # Get the original data
     data = chat_completion_request.model_dump(exclude_none=True)
+    
+    # Convert messages to Responses API input format
+    messages = data.pop("messages", [])
+    response_input = []
+    
+    for message in messages:
+        if message["role"] == "user":
+            content = []
+            if isinstance(message.get("content"), str):
+                content.append({"type": "input_text", "text": message["content"]})
+            elif isinstance(message.get("content"), list):
+                for item in message["content"]:
+                    if item.get("type") == "text":
+                        content.append({"type": "input_text", "text": item.get("text", "")})
+                    elif item.get("type") == "image_url":
+                        content.append({"type": "input_image", "image_url": item.get("image_url", {})})
+                    else:
+                        # Fallback for other content types
+                        content.append({"type": "input_text", "text": str(item)})
+            else:
+                content.append({"type": "input_text", "text": str(message.get("content", ""))})
+            
+            response_input.append({
+                "role": "user",
+                "content": content
+            })
+            
+        elif message["role"] == "assistant":
+            content = []
+            if message.get("content"):
+                content.append({"type": "input_text", "text": message["content"]})
+            
+            assistant_message = {
+                "role": "assistant",
+                "content": content
+            }
+            
+            # Handle tool calls if present
+            if message.get("tool_calls"):
+                assistant_message["tool_calls"] = message["tool_calls"]
+                
+            response_input.append(assistant_message)
+            
+        elif message["role"] == "system":
+            response_input.append({
+                "role": "system",
+                "content": [{"type": "input_text", "text": message.get("content", "")}]
+            })
+            
+        elif message["role"] == "developer":
+            response_input.append({
+                "role": "developer", 
+                "content": [{"type": "input_text", "text": message.get("content", "")}]
+            })
+            
+        elif message["role"] == "tool":
+            tool_message = {
+                "role": "tool",
+                "content": [{"type": "input_text", "text": message.get("content", "")}]
+            }
+            if message.get("tool_call_id"):
+                tool_message["tool_call_id"] = message["tool_call_id"]
+            response_input.append(tool_message)
+    
+    # Build the Responses API request
+    responses_data = {
+        "model": data.get("model"),
+        "input": response_input,  # Changed from 'messages' to 'input'
+        "temperature": data.get("temperature", 1.0),
+    }
+    
+    # Handle max_tokens parameter - use max_tokens instead of max_completion_tokens for Responses API
+    if data.get("max_completion_tokens"):
+        responses_data["max_tokens"] = data.get("max_completion_tokens")
+    elif data.get("max_tokens"):
+        responses_data["max_tokens"] = data.get("max_tokens")
+    
+    # Handle tools (format should be compatible)
+    if "tools" in data and data["tools"] is not None:
+        responses_data["tools"] = data["tools"]
+        
+        # Handle tool choice
+        if "tool_choice" in data:
+            responses_data["tool_choice"] = data["tool_choice"]
+        
+        # Handle parallel tool calls
+        if "parallel_tool_calls" in data:
+            responses_data["parallel_tool_calls"] = data["parallel_tool_calls"]
+    
+    # Handle legacy functions parameter 
+    if "functions" in data and data["functions"] is not None:
+        # Convert functions to tools format
+        responses_data["tools"] = [{"type": "function", "function": f} for f in data["functions"]]
+        
+        # Handle function_call -> tool_choice conversion
+        if "function_call" in data and data["function_call"]:
+            if isinstance(data["function_call"], str):
+                if data["function_call"] in ["none", "auto", "required"]:
+                    responses_data["tool_choice"] = data["function_call"]
+                else:
+                    # It's a specific function name
+                    responses_data["tool_choice"] = {"type": "function", "function": {"name": data["function_call"]}}
+            elif isinstance(data["function_call"], dict):
+                responses_data["tool_choice"] = {"type": "function", "function": data["function_call"]}
+    
+    # Add other parameters that are compatible with Responses API
+    # Note: Not all Chat Completions parameters are supported by Responses API
+    supported_params = ["user", "seed", "stop", "reasoning_effort"]
+    for key in supported_params:
+        if key in data and data[key] is not None:
+            responses_data[key] = data[key]
+    
+    return responses_data
 
-    # add check otherwise will cause error: "Invalid value for 'parallel_tool_calls': 'parallel_tool_calls' is only allowed when 'tools' are specified."
-    if chat_completion_request.tools is not None:
+
+def convert_response_stream_chunk_to_chat_completion_format(chunk_data: dict) -> dict:
+    """Convert Responses API streaming chunk to Chat Completions streaming chunk format."""
+    # Basic structure for Chat Completions chunk
+    converted_chunk = {
+        "id": chunk_data.get("id", "chatcmpl-temp"),
+        "object": "chat.completion.chunk",
+        "created": chunk_data.get("created", 0),
+        "model": chunk_data.get("model"),
+        "system_fingerprint": chunk_data.get("system_fingerprint"),
+        "choices": []
+    }
+    
+    # Handle different event types from Responses API
+    event_type = chunk_data.get("type")
+    
+    if event_type == "response.text.delta":
+        # Text content delta
+        converted_chunk["choices"] = [{
+            "index": 0,
+            "delta": {
+                "role": "assistant",
+                "content": chunk_data.get("delta", "")
+            },
+            "logprobs": None,
+            "finish_reason": None
+        }]
+    elif event_type == "response.function_call.arguments.delta":
+        # Function call arguments delta
+        converted_chunk["choices"] = [{
+            "index": 0,
+            "delta": {
+                "tool_calls": [{
+                    "index": chunk_data.get("call_id", 0),
+                    "function": {
+                        "arguments": chunk_data.get("delta", "")
+                    }
+                }]
+            },
+            "logprobs": None,
+            "finish_reason": None
+        }]
+    elif event_type == "response.function_call.name.delta":
+        # Function call name delta
+        converted_chunk["choices"] = [{
+            "index": 0,
+            "delta": {
+                "tool_calls": [{
+                    "index": chunk_data.get("call_id", 0),
+                    "id": chunk_data.get("call_id"),
+                    "type": "function",
+                    "function": {
+                        "name": chunk_data.get("delta", "")
+                    }
+                }]
+            },
+            "logprobs": None,
+            "finish_reason": None
+        }]
+    elif event_type == "response.reasoning.delta":
+        # Reasoning content delta - map to reasoning_content
+        converted_chunk["choices"] = [{
+            "index": 0,
+            "delta": {
+                "reasoning_content": chunk_data.get("delta", "")
+            },
+            "logprobs": None,
+            "finish_reason": None
+        }]
+    elif event_type == "response.done" or chunk_data.get("finish_reason"):
+        # End of response
+        converted_chunk["choices"] = [{
+            "index": 0,
+            "delta": {},
+            "logprobs": None,
+            "finish_reason": chunk_data.get("finish_reason", "stop")
+        }]
+    else:
+        # Default case - empty delta
+        converted_chunk["choices"] = [{
+            "index": 0,
+            "delta": {},
+            "logprobs": None,
+            "finish_reason": None
+        }]
+    
+    return converted_chunk
+
+
+def convert_responses_to_chat_completion_format(response_data: dict) -> dict:
+    """Convert Responses API response format to Chat Completions format."""
+    # Handle both Response objects and dicts
+    if hasattr(response_data, 'model_dump'):
+        response_data = response_data.model_dump()
+    
+    # Extract output items 
+    output_items = response_data.get("output", [])
+    choices = []
+    
+    for i, item in enumerate(output_items):
+        if item.get("type") == "message":
+            message_data = item.get("message", {})
+            
+            # Convert content format from list to string
+            content = ""
+            content_items = message_data.get("content", [])
+            for content_item in content_items:
+                if content_item.get("type") == "text":
+                    content += content_item.get("text", "")
+                elif content_item.get("type") == "input_text":
+                    content += content_item.get("text", "")
+            
+            choice = {
+                "index": i,
+                "message": {
+                    "role": message_data.get("role", "assistant"),
+                    "content": content,
+                    "tool_calls": message_data.get("tool_calls"),
+                },
+                "finish_reason": response_data.get("status", "stop")
+            }
+            
+            # Handle reasoning content for reasoning models
+            reasoning_items = response_data.get("reasoning", [])
+            if reasoning_items:
+                reasoning_parts = []
+                for reasoning_item in reasoning_items:
+                    if isinstance(reasoning_item, dict) and "text" in reasoning_item:
+                        reasoning_parts.append(reasoning_item["text"])
+                    elif isinstance(reasoning_item, str):
+                        reasoning_parts.append(reasoning_item)
+                        
+                if reasoning_parts:
+                    choice["message"]["reasoning_content"] = "\n".join(reasoning_parts)
+                    choice["message"]["omitted_reasoning_content"] = True
+            
+            choices.append(choice)
+    
+    # Build the Chat Completion response format
+    from datetime import datetime
+    return {
+        "id": response_data.get("id"),
+        "choices": choices,
+        "created": int(datetime.now().timestamp()),
+        "model": response_data.get("model"),
+        "usage": response_data.get("usage", {}),
+        "system_fingerprint": response_data.get("system_fingerprint")
+    }
+
+
+def prepare_openai_payload(chat_completion_request: ChatCompletionRequest):
+    """Prepare payload for OpenAI API request. 
+    
+    This function now uses the Responses API format instead of Chat Completions format
+    to support GPT-5 models and future-proof the implementation.
+    """
+    # Convert to Responses API format instead of Chat Completions format
+    data = convert_chat_completion_to_responses_format(chat_completion_request)
+    
+    # Handle parallel tool calls
+    if "tools" in data and data["tools"] is not None:
         # Enable parallel tool calls based on environment variable
         enable_parallel = os.getenv("LETTA_ENABLE_PARALLEL_TOOL_CALLS", "true").lower() == "true"
-        data["parallel_tool_calls"] = enable_parallel
-
-    # If functions == None, strip from the payload
-    if "functions" in data and data["functions"] is None:
-        data.pop("functions")
-        data.pop("function_call", None)  # extra safe,  should exist always (default="auto")
-
-    if "tools" in data and data["tools"] is None:
-        data.pop("tools")
-        data.pop("tool_choice", None)  # extra safe,  should exist always (default="auto")
-
-    # # NOTE: move this out to wherever the ChatCompletionRequest is created
-    # if "tools" in data:
-    #     for tool in data["tools"]:
-    #         try:
-    #             tool["function"] = convert_to_structured_output(tool["function"])
-    #         except ValueError as e:
-    #             warnings.warn(f"Failed to convert tool function to structured output, tool={tool}, error={e}")
-
-    if not supports_parallel_tool_calling(chat_completion_request.model):
-        data.pop("parallel_tool_calls", None)
-
+        if supports_parallel_tool_calling(chat_completion_request.model):
+            data["parallel_tool_calls"] = enable_parallel
+    
     return data

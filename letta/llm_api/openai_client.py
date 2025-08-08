@@ -1,10 +1,14 @@
 import os
+from datetime import datetime
 from typing import List, Optional
 
 import openai
 from openai import AsyncOpenAI, AsyncStream, OpenAI
 from openai.types.chat.chat_completion import ChatCompletion
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
+
+# Import Response API types - required for Responses API migration
+from openai.types.responses import Response
 
 from letta.constants import LETTA_MODEL_ENDPOINT
 from letta.errors import (
@@ -152,6 +156,215 @@ class OpenAIClient(LLMClientBase):
 
         return kwargs
 
+    def _convert_messages_to_response_input(self, messages: List[PydanticMessage]) -> List[dict]:
+        """Convert internal message format to Responses API input format.
+        
+        Args:
+            messages: List of PydanticMessage objects
+            
+        Returns:
+            List of dicts in Responses API input format
+        """
+        response_input = []
+        
+        for message in messages:
+            if message.role == "user":
+                content = []
+                if isinstance(message.content, str):
+                    # Simple string content
+                    content.append({"type": "input_text", "text": message.content})
+                elif isinstance(message.content, list):
+                    # Multi-modal content (text + images)
+                    for item in message.content:
+                        if item.type == MessageContentType.text:
+                            content.append({"type": "input_text", "text": item.text})
+                        elif item.type == MessageContentType.image:
+                            content.append({
+                                "type": "input_image",
+                                "image_url": f"data:{item.source.media_type};base64,{item.source.data}"
+                            })
+                        else:
+                            # Handle other content types as text fallback
+                            content.append({"type": "input_text", "text": str(item)})
+                
+                response_input.append({
+                    "role": "user", 
+                    "content": content
+                })
+            
+            elif message.role == "assistant":
+                # Handle assistant messages with potential tool calls
+                response_input.append(self._convert_assistant_message(message))
+                
+            elif message.role == "system":
+                # System messages in Responses API 
+                content = []
+                if isinstance(message.content, str):
+                    content.append({"type": "input_text", "text": message.content})
+                elif isinstance(message.content, list):
+                    for item in message.content:
+                        if hasattr(item, 'text'):
+                            content.append({"type": "input_text", "text": item.text})
+                        else:
+                            content.append({"type": "input_text", "text": str(item)})
+                else:
+                    content.append({"type": "input_text", "text": str(message.content)})
+                
+                response_input.append({
+                    "role": "system",
+                    "content": content
+                })
+                
+            elif message.role == "developer":
+                # Developer role messages (if supported by model)
+                content = []
+                if isinstance(message.content, str):
+                    content.append({"type": "input_text", "text": message.content})
+                else:
+                    content.append({"type": "input_text", "text": str(message.content)})
+                
+                response_input.append({
+                    "role": "developer", 
+                    "content": content
+                })
+            
+            elif message.role == "tool":
+                # Tool result messages
+                content = []
+                if isinstance(message.content, str):
+                    content.append({"type": "input_text", "text": message.content})
+                else:
+                    content.append({"type": "input_text", "text": str(message.content)})
+                
+                tool_message = {
+                    "role": "tool",
+                    "content": content
+                }
+                # Add tool_call_id if present
+                if hasattr(message, 'tool_call_id') and message.tool_call_id:
+                    tool_message["tool_call_id"] = message.tool_call_id
+                
+                response_input.append(tool_message)
+        
+        return response_input
+    
+    def _convert_assistant_message(self, message: PydanticMessage) -> dict:
+        """Convert assistant message to Responses API format."""
+        content = []
+        
+        # Handle content
+        if isinstance(message.content, str):
+            if message.content:  # Only add non-empty content
+                content.append({"type": "input_text", "text": message.content})
+        elif isinstance(message.content, list):
+            for item in message.content:
+                if hasattr(item, 'text') and item.text:
+                    content.append({"type": "input_text", "text": item.text})
+                elif hasattr(item, 'type') and item.type == MessageContentType.text and hasattr(item, 'text'):
+                    content.append({"type": "input_text", "text": item.text})
+        
+        assistant_message = {
+            "role": "assistant",
+            "content": content
+        }
+        
+        # Handle tool calls if present
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            # Tool calls format should be compatible between APIs
+            assistant_message["tool_calls"] = [tc.model_dump() for tc in message.tool_calls]
+        
+        return assistant_message
+
+    def _convert_responses_to_chat_completion(self, response_data: dict) -> dict:
+        """Convert Responses API response format to Chat Completions format."""
+        
+        # Extract output items 
+        output_items = response_data.get("output", [])
+        choices = []
+        
+        for i, item in enumerate(output_items):
+            if item.get("type") == "message":
+                message_data = item.get("message", {})
+                
+                # Convert content format
+                content = self._convert_response_content(message_data.get("content", []))
+                
+                choice = {
+                    "index": i,
+                    "message": {
+                        "role": message_data.get("role", "assistant"),
+                        "content": content,
+                        "tool_calls": message_data.get("tool_calls"),  # Should be compatible
+                        "reasoning_content": self._extract_reasoning_content(response_data)
+                    },
+                    "finish_reason": response_data.get("status", "stop")  # Map status to finish_reason
+                }
+                choices.append(choice)
+        
+        return {
+            "id": response_data.get("id"),
+            "choices": choices,
+            "created": int(datetime.now().timestamp()),
+            "model": response_data.get("model"),
+            "usage": response_data.get("usage", {}),
+            "system_fingerprint": response_data.get("system_fingerprint")
+        }
+
+    def _convert_response_content(self, content_items: List[dict]) -> str:
+        """Convert Responses API content format to string content.
+        
+        Args:
+            content_items: List of content items from Responses API
+            
+        Returns:
+            Combined text content as string
+        """
+        if not content_items:
+            return ""
+            
+        text_parts = []
+        for item in content_items:
+            if item.get("type") == "text":
+                text_parts.append(item.get("text", ""))
+            elif item.get("type") == "input_text":
+                text_parts.append(item.get("text", ""))
+            # Note: We could handle other content types like images here if needed
+            # For now, focus on text content which is most common
+            
+        return "".join(text_parts)
+
+    def _extract_reasoning_content(self, response_data: dict) -> Optional[str]:
+        """Extract reasoning content from Responses API response.
+        
+        Args:
+            response_data: Raw response data from Responses API
+            
+        Returns:
+            Reasoning content if available, None otherwise
+        """
+        reasoning_items = response_data.get("reasoning", [])
+        if not reasoning_items:
+            return None
+            
+        reasoning_parts = []
+        for item in reasoning_items:
+            if isinstance(item, dict) and "text" in item:
+                reasoning_parts.append(item["text"])
+            elif isinstance(item, str):
+                reasoning_parts.append(item)
+                
+        return "\n".join(reasoning_parts) if reasoning_parts else None
+
+    def _process_reasoning_content(self, chat_completion_response: ChatCompletionResponse, response_data: dict):
+        """Process reasoning content for reasoning models like GPT-5."""
+        reasoning_content = self._extract_reasoning_content(response_data)
+        if reasoning_content and chat_completion_response.choices:
+            # Add reasoning content to the first choice's message
+            if not hasattr(chat_completion_response.choices[0].message, 'reasoning_content'):
+                chat_completion_response.choices[0].message.reasoning_content = reasoning_content
+            else:
+                chat_completion_response.choices[0].message.reasoning_content = reasoning_content
+
     @trace_method
     def build_request_data(
         self,
@@ -161,7 +374,7 @@ class OpenAIClient(LLMClientBase):
         force_tool_call: Optional[str] = None,
     ) -> dict:
         """
-        Constructs a request object in the expected data format for the OpenAI API.
+        Constructs a request object in the Responses API format for the OpenAI API.
         """
         if tools and llm_config.put_inner_thoughts_in_kwargs:
             # Special case for LM Studio backend since it needs extra guidance to force out the thoughts first
@@ -176,100 +389,91 @@ class OpenAIClient(LLMClientBase):
                 put_inner_thoughts_first=True,
             )
 
-        use_developer_message = accepts_developer_role(llm_config.model)
-
-        openai_message_list = [
-            cast_message_to_subtype(
-                m.to_openai_dict(
-                    put_inner_thoughts_in_kwargs=llm_config.put_inner_thoughts_in_kwargs,
-                    use_developer_message=use_developer_message,
-                )
-            )
-            for m in messages
-        ]
-
+        # Convert messages to Responses API input format
+        response_input = self._convert_messages_to_response_input(messages)
+        
         if llm_config.model:
             model = llm_config.model
         else:
             logger.warning(f"Model type not set in llm_config: {llm_config.model_dump_json(indent=4)}")
             model = None
 
-        # force function calling for reliability, see https://platform.openai.com/docs/api-reference/chat/create#chat-create-tool_choice
-        # TODO(matt) move into LLMConfig
-        # TODO: This vllm checking is very brittle and is a patch at most
-        tool_choice = None
-        if requires_auto_tool_choice(llm_config):
-            tool_choice = "auto"
-        elif tools:
-            # only set if tools is non-Null
-            tool_choice = "required"
-
-        if force_tool_call is not None:
-            tool_choice = ToolFunctionChoice(type="function", function=ToolFunctionChoiceFunctionCall(name=force_tool_call))
-
-        data = ChatCompletionRequest(
-            model=model,
-            messages=fill_image_content_in_messages(openai_message_list, messages),
-            tools=[OpenAITool(type="function", function=f) for f in tools] if tools else None,
-            tool_choice=tool_choice,
-            user=str(),
-            max_completion_tokens=llm_config.max_tokens,
+        # Build Responses API request (uses OpenAI's expected format)
+        data = {
+            "model": model,
+            "input": response_input,  # Changed from 'messages' to 'input'
+            "max_completion_tokens": llm_config.max_tokens,
             # NOTE: the reasoners that don't support temperature require 1.0, not None
-            temperature=llm_config.temperature if supports_temperature_param(model) else 1.0,
-        )
+            "temperature": llm_config.temperature if supports_temperature_param(model) else 1.0,
+        }
+        
+        # Handle tools (format should be compatible between APIs)
+        if tools:
+            # Convert tools to proper format with structured output if supported
+            converted_tools = []
+            for tool in tools:
+                converted_tool = {"type": "function", "function": tool}
+                if supports_structured_output(llm_config):
+                    try:
+                        structured_output_version = convert_to_structured_output(tool)
+                        converted_tool["function"] = structured_output_version
+                    except ValueError as e:
+                        logger.warning(f"Failed to convert tool function to structured output, tool={tool}, error={e}")
+                converted_tools.append(converted_tool)
+            
+            data["tools"] = converted_tools
+            
+            # Handle tool choice
+            if force_tool_call:
+                data["tool_choice"] = {"type": "function", "function": {"name": force_tool_call}}
+            elif requires_auto_tool_choice(llm_config):
+                data["tool_choice"] = "auto"
+            else:
+                data["tool_choice"] = "required"
+                
+            # Handle parallel tool calls
+            if supports_parallel_tool_calling(model):
+                enable_parallel = os.getenv("LETTA_ENABLE_PARALLEL_TOOL_CALLS", "true").lower() == "true"
+                data["parallel_tool_calls"] = enable_parallel
 
+        # Add frequency penalty if specified
         if llm_config.frequency_penalty is not None:
-            data.frequency_penalty = llm_config.frequency_penalty
+            data["frequency_penalty"] = llm_config.frequency_penalty
 
-        if tools and supports_parallel_tool_calling(model):
-            # Enable parallel tool calls based on environment variable or default to True
-            enable_parallel = os.getenv("LETTA_ENABLE_PARALLEL_TOOL_CALLS", "true").lower() == "true"
-            data.parallel_tool_calls = enable_parallel
-
-        # always set user id for openai requests
+        # Always set user id for openai requests
         if self.actor:
-            data.user = self.actor.id
+            data["user"] = self.actor.id
+        else:
+            data["user"] = ""
 
+        # Handle special endpoint configurations
         if llm_config.model_endpoint == LETTA_MODEL_ENDPOINT:
             if not self.actor:
                 # override user id for inference.letta.com
                 import uuid
+                data["user"] = str(uuid.UUID(int=0))
+            data["model"] = "memgpt-openai"
 
-                data.user = str(uuid.UUID(int=0))
-
-            data.model = "memgpt-openai"
-
-        if data.tools is not None and len(data.tools) > 0:
-            # Convert to structured output style (which has 'strict' and no optionals)
-            for tool in data.tools:
-                if supports_structured_output(llm_config):
-                    try:
-                        structured_output_version = convert_to_structured_output(tool.function.model_dump())
-                        tool.function = FunctionSchema(**structured_output_version)
-                    except ValueError as e:
-                        logger.warning(f"Failed to convert tool function to structured output, tool={tool}, error={e}")
-
-        return data.model_dump(exclude_unset=True)
+        return data
 
     @trace_method
     def request(self, request_data: dict, llm_config: LLMConfig) -> dict:
         """
-        Performs underlying synchronous request to OpenAI API and returns raw response dict.
+        Performs underlying synchronous request to OpenAI Responses API and returns raw response dict.
         """
         client = OpenAI(**self._prepare_client_kwargs(llm_config))
-
-        response: ChatCompletion = client.chat.completions.create(**request_data)
+        response = client.responses.create(**request_data)
         return response.model_dump()
 
     @trace_method
     async def request_async(self, request_data: dict, llm_config: LLMConfig) -> dict:
         """
-        Performs underlying asynchronous request to OpenAI API and returns raw response dict.
+        Performs underlying asynchronous request to OpenAI Responses API and returns raw response dict.
         """
         kwargs = await self._prepare_client_kwargs_async(llm_config)
         client = AsyncOpenAI(**kwargs)
 
-        response: ChatCompletion = await client.chat.completions.create(**request_data)
+        response = await client.responses.create(**request_data)
         return response.model_dump()
 
     @trace_method
@@ -280,33 +484,38 @@ class OpenAIClient(LLMClientBase):
         llm_config: LLMConfig,
     ) -> ChatCompletionResponse:
         """
-        Converts raw OpenAI response dict into the ChatCompletionResponse Pydantic model.
+        Converts raw Responses API response dict into the ChatCompletionResponse Pydantic model.
         Handles potential extraction of inner thoughts if they were added via kwargs.
         """
-        # OpenAI's response structure directly maps to ChatCompletionResponse
-        # We just need to instantiate the Pydantic model for validation and type safety.
-        chat_completion_response = ChatCompletionResponse(**response_data)
+        # Convert Responses API response to ChatCompletionResponse format
+        converted_response = self._convert_responses_to_chat_completion(response_data)
+        
+        chat_completion_response = ChatCompletionResponse(**converted_response)
         chat_completion_response = self._fix_truncated_json_response(chat_completion_response)
+        
         # Unpack inner thoughts if they were embedded in function arguments
         if llm_config.put_inner_thoughts_in_kwargs:
             chat_completion_response = unpack_all_inner_thoughts_from_kwargs(
                 response=chat_completion_response, inner_thoughts_key=INNER_THOUGHTS_KWARG
             )
 
-        # If we used a reasoning model, create a content part for the ommitted reasoning
+        # Handle reasoning content for reasoning models
         if is_openai_reasoning_model(llm_config.model):
-            chat_completion_response.choices[0].message.omitted_reasoning_content = True
+            self._process_reasoning_content(chat_completion_response, response_data)
+            # Also set the omitted reasoning flag for backward compatibility
+            if chat_completion_response.choices:
+                chat_completion_response.choices[0].message.omitted_reasoning_content = True
 
         return chat_completion_response
 
     @trace_method
     async def stream_async(self, request_data: dict, llm_config: LLMConfig) -> AsyncStream[ChatCompletionChunk]:
         """
-        Performs underlying asynchronous streaming request to OpenAI and returns the async stream iterator.
+        Performs underlying asynchronous streaming request to OpenAI Responses API and returns the async stream iterator.
         """
         kwargs = await self._prepare_client_kwargs_async(llm_config)
         client = AsyncOpenAI(**kwargs)
-        response_stream: AsyncStream[ChatCompletionChunk] = await client.chat.completions.create(
+        response_stream = await client.responses.create(
             **request_data, stream=True, stream_options={"include_usage": True}
         )
         return response_stream
