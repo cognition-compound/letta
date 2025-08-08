@@ -147,8 +147,24 @@ async def test_responses_api_tool_format_integration(openai_client, llm_config, 
                 print(f"    - REASONING ITEM FULL DUMP:")
                 import json
                 print(json.dumps(item, indent=6, default=str))
+                
+                # Check if we have actual reasoning content now
+                content = item.get("content")
+                if content:
+                    print(f"    ✅ REASONING CONTENT FOUND: {len(str(content))} chars")
+                    print(f"    First 200 chars: {str(content)[:200]}...")
+                else:
+                    print(f"    ❌ REASONING CONTENT IS NULL")
         
         print(f"  - Reasoning items: {len(reasoning_items)}")
+        
+        # Check top-level reasoning configuration
+        top_reasoning = response_data.get("reasoning", {})
+        if top_reasoning:
+            print(f"  - Top-level reasoning config:")
+            print(f"    - Effort: {top_reasoning.get('effort', 'not set')}")
+            print(f"    - Generate summary: {top_reasoning.get('generate_summary', 'not set')}")
+            print(f"    - Summary: {top_reasoning.get('summary', 'not set')}")
         
         print(f"  - Output types: {output_types}")
         print(f"  - Function calls: {function_calls_count}")

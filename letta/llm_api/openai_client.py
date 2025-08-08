@@ -411,6 +411,32 @@ class OpenAIClient(LLMClientBase):
         Returns:
             Reasoning content if available, None otherwise
         """
+        # First, try to extract actual reasoning content from output items
+        output_items = response_data.get("output", [])
+        reasoning_content_parts = []
+        
+        for item in output_items:
+            if item.get("type") == "reasoning":
+                content = item.get("content")
+                if content:
+                    # Content could be a list or string
+                    if isinstance(content, list):
+                        # Extract text from content items (similar to message content)
+                        text_parts = []
+                        for content_item in content:
+                            if isinstance(content_item, dict) and content_item.get("type") == "text":
+                                text_parts.append(content_item.get("text", ""))
+                            elif isinstance(content_item, str):
+                                text_parts.append(content_item)
+                        reasoning_content_parts.append("".join(text_parts))
+                    elif isinstance(content, str):
+                        reasoning_content_parts.append(content)
+
+        # If we found actual reasoning content, return it
+        if reasoning_content_parts:
+            return "\n".join(reasoning_content_parts)
+
+        # Fallback: extract metadata from top-level reasoning object
         reasoning_data = response_data.get("reasoning", {})
         if not reasoning_data or not isinstance(reasoning_data, dict):
             return None
@@ -525,6 +551,12 @@ class OpenAIClient(LLMClientBase):
             data["prompt_cache_key"] = self.actor.id
         else:
             data["prompt_cache_key"] = ""
+
+        # Configure reasoning parameters for reasoning models
+        if is_openai_reasoning_model(model):
+            data["reasoning"] = {
+                "effort": "low"  # Use low effort for faster responses
+            }
 
         # Handle special endpoint configurations
         if llm_config.model_endpoint == LETTA_MODEL_ENDPOINT:
