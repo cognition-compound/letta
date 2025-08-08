@@ -3391,11 +3391,9 @@ class AgentManager:
         )
         calculator = ContextWindowCalculator()
 
-        if os.getenv("LETTA_ENVIRONMENT") == "PRODUCTION" or agent_state.llm_config.model_endpoint_type == "anthropic":
+        if agent_state.llm_config.model_endpoint_type == "anthropic":
             anthropic_client = LLMClient.create(provider_type=ProviderType.anthropic, actor=actor)
-            model = agent_state.llm_config.model if agent_state.llm_config.model_endpoint_type == "anthropic" else None
-
-            token_counter = AnthropicTokenCounter(anthropic_client, model)  # noqa
+            token_counter = AnthropicTokenCounter(anthropic_client, agent_state.llm_config.model)
         else:
             token_counter = TiktokenCounter(agent_state.llm_config.model)
 
