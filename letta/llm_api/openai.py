@@ -222,6 +222,14 @@ def build_openai_chat_completions_request(
                 tool_choice = "auto"
             else:
                 tool_choice = function_call
+        # GPT-5 specific parameters with reasonable defaults
+        gpt5_params = {}
+        if model.startswith("gpt-5"):
+            gpt5_params.update({
+                "verbosity": "medium",  # balanced response length
+                "reasoning_effort": "medium"  # balanced speed/quality
+            })
+        
         data = ChatCompletionRequest(
             model=model,
             messages=openai_message_list,
@@ -231,8 +239,17 @@ def build_openai_chat_completions_request(
             max_completion_tokens=llm_config.max_tokens,
             temperature=llm_config.temperature if supports_temperature_param(model) else 1.0,
             reasoning_effort=llm_config.reasoning_effort,
+            **gpt5_params
         )
     else:
+        # GPT-5 specific parameters with reasonable defaults
+        gpt5_params = {}
+        if model.startswith("gpt-5"):
+            gpt5_params.update({
+                "verbosity": "medium",  # balanced response length
+                "reasoning_effort": "medium"  # balanced speed/quality
+            })
+            
         data = ChatCompletionRequest(
             model=model,
             messages=openai_message_list,
@@ -242,6 +259,7 @@ def build_openai_chat_completions_request(
             max_completion_tokens=llm_config.max_tokens,
             temperature=llm_config.temperature if supports_temperature_param(model) else 1.0,
             reasoning_effort=llm_config.reasoning_effort,
+            **gpt5_params
         )
         # https://platform.openai.com/docs/guides/text-generation/json-mode
         # only supported by gpt-4o, gpt-4-turbo, or gpt-3.5-turbo

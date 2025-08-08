@@ -149,6 +149,10 @@ class ChatCompletionRequest(BaseModel):
     user: Optional[str] = None  # unique ID of the end-user (for monitoring)
     parallel_tool_calls: Optional[bool] = None
     instructions: Optional[str] = None
+    
+    # GPT-5 specific parameters
+    verbosity: Optional[str] = None  # "low", "medium", "high" 
+    reasoning_effort: Optional[str] = None  # "minimal", "low", "medium", "high"
 
     # function-calling related
     tools: Optional[List[Tool]] = None
