@@ -28,7 +28,7 @@ from letta.errors import (
 from letta.llm_api.helpers import convert_to_structured_output
 from letta.llm_api.llm_client_base import LLMClientBase
 from letta.log import get_logger
-from letta.otel.tracing import trace_method
+from letta.otel.tracing import log_event, trace_method
 from letta.schemas.embedding_config import EmbeddingConfig
 from letta.schemas.enums import ProviderCategory, ProviderType
 from letta.schemas.letta_message_content import MessageContentType
@@ -700,6 +700,29 @@ class OpenAIClient(LLMClientBase):
             return clean_response
 
         except Exception as e:
+            # Log structured error event for non-streaming requests
+            log_event("llm_request_error", {
+                "model": request_data.get("model", "unknown"),
+                "tool_count": len(request_data.get("tools", [])),
+                "api_type": "responses",
+                "stream_mode": False,
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "provider": "openai",
+                "endpoint": llm_config.model_endpoint or "default"
+            })
+            
+            # Check for specific compatibility issues
+            error_str = str(e).lower()
+            if "stream_options" in error_str and "include_usage" in error_str:
+                log_event("llm_compatibility_issue_detected", {
+                    "issue_type": "stream_options_unsupported",
+                    "model": request_data.get("model", "unknown"),
+                    "api_type": "responses", 
+                    "provider": "openai",
+                    "fix_needed": "remove stream_options.include_usage parameter"
+                })
+            
             logger.error(f"[API_ERROR] Responses API call failed: {type(e).__name__}: {str(e)}")
             logger.error(f"[API_ERROR] Request model: {request_data.get('model')}, tools: {len(request_data.get('tools', []))}")
             logger.debug(f"[API_ERROR] Full request data: {json.dumps(request_data, indent=2, default=str)}")
@@ -734,10 +757,69 @@ class OpenAIClient(LLMClientBase):
         """
         Performs underlying asynchronous streaming request to OpenAI Responses API and returns the async stream iterator.
         """
-        kwargs = await self._prepare_client_kwargs_async(llm_config)
-        client = AsyncOpenAI(**kwargs)
-        response_stream = await client.responses.create(**request_data, stream=True)
-        return response_stream
+        model = request_data.get("model", "unknown")
+        tool_count = len(request_data.get("tools", []))
+        
+        # Log structured request start event
+        log_event("llm_stream_request_start", {
+            "model": model,
+            "tool_count": tool_count,
+            "api_type": "responses",
+            "stream_mode": True,
+            "provider": "openai",
+            "endpoint": llm_config.model_endpoint or "default",
+            "temperature": request_data.get("temperature"),
+            "max_output_tokens": request_data.get("max_output_tokens")
+        })
+        
+        try:
+            kwargs = await self._prepare_client_kwargs_async(llm_config)
+            client = AsyncOpenAI(**kwargs)
+            
+            # Log compatibility note for stream_options
+            log_event("llm_stream_compatibility_note", {
+                "model": model,
+                "api_type": "responses",
+                "note": "stream_options.include_usage disabled for GPT-5 Responses API compatibility",
+                "issue": "gpt5_responses_api_stream_options_unsupported"
+            })
+            
+            response_stream = await client.responses.create(**request_data, stream=True)
+            
+            # Log successful stream initiation
+            log_event("llm_stream_request_success", {
+                "model": model,
+                "tool_count": tool_count,
+                "api_type": "responses"
+            })
+            
+            return response_stream
+            
+        except Exception as e:
+            # Log structured error event
+            log_event("llm_stream_request_error", {
+                "model": model,
+                "tool_count": tool_count,
+                "api_type": "responses",
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "base_url": kwargs.get('base_url', 'default'),
+                "provider": "openai"
+            })
+            
+            # Check for specific compatibility issues in streaming
+            error_str = str(e).lower()
+            if "stream_options" in error_str and "include_usage" in error_str:
+                log_event("llm_compatibility_issue_detected", {
+                    "issue_type": "stream_options_unsupported", 
+                    "model": model,
+                    "api_type": "responses",
+                    "stream_mode": True,
+                    "provider": "openai",
+                    "fix_needed": "remove stream_options.include_usage parameter"
+                })
+            
+            raise
 
     @trace_method
     async def request_embeddings(self, inputs: List[str], embedding_config: EmbeddingConfig) -> List[List[float]]:
