@@ -64,6 +64,10 @@ MODEL_LIST = [
         "context_window": 200000,
     },
     {
+        "name": "claude-opus-4-1-20250805",
+        "context_window": 200000,
+    },
+    {
         "name": "claude-3-5-haiku-20241022",
         "context_window": 200000,
     },
@@ -75,11 +79,6 @@ MODEL_LIST = [
     # 3 latest
     {
         "name": "claude-3-opus-latest",
-        "context_window": 200000,
-    },
-    # 4
-    {
-        "name": "claude-opus-4-20250514",
         "context_window": 200000,
     },
     ## Sonnet

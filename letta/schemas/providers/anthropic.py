@@ -50,7 +50,12 @@ class AnthropicProvider(Provider):
                 max_tokens = 4096
             if "claude-3-haiku" in model["id"]:
                 max_tokens = 4096
-            # TODO: set for 3-7 extended thinking mode
+            # Claude 4 models have higher token limits
+            if "claude-opus-4" in model["id"] or "claude-sonnet-4" in model["id"]:
+                max_tokens = 8192
+            # Claude 3.7 extended thinking mode
+            if "claude-3-7" in model["id"]:
+                max_tokens = 8192
 
             # NOTE: from 2025-02
             # We set this to false by default, because Anthropic can
