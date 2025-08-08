@@ -1820,7 +1820,12 @@ class AgentManager:
 
         diff = united_diff(curr_system_message_openai["content"], new_system_message_str)
         if len(diff) > 0:  # there was a diff
-            logger.debug(f"Rebuilding system with new memory...\nDiff:\n{diff}")
+            # Calculate diff statistics instead of dumping full diff to logs
+            diff_lines = diff.split('\n')
+            added_lines = len([l for l in diff_lines if l.startswith('+')])
+            removed_lines = len([l for l in diff_lines if l.startswith('-')])
+            logger.debug(f"Rebuilding system with new memory: {added_lines} lines added, {removed_lines} lines removed, {len(diff_lines)} total diff lines")
+            logger.debug(f"New system message length: {len(new_system_message_str)} chars, previous: {len(curr_system_message_openai['content'])} chars")
 
             # Swap the system message out (only if there is a diff)
             temp_message = PydanticMessage.dict_to_message(
