@@ -1203,9 +1203,9 @@ class Agent(BaseAgent):
         """Get the context window of the agent"""
 
         system_prompt = self.agent_state.system  # TODO is this the current system or the initial system?
-        num_tokens_system = count_tokens(system_prompt)
+        num_tokens_system = count_tokens(system_prompt, model=self.model)
         core_memory = self.agent_state.memory.compile()
-        num_tokens_core_memory = count_tokens(core_memory)
+        num_tokens_core_memory = count_tokens(core_memory, model=self.model)
 
         # Grab the in-context messages
         # conversion of messages to OpenAI dict format, which is passed to the token counter
@@ -1226,7 +1226,7 @@ class Agent(BaseAgent):
             text_content = in_context_messages[1].content[0].text
             assert text_content is not None
             summary_memory = text_content
-            num_tokens_summary_memory = count_tokens(text_content)
+            num_tokens_summary_memory = count_tokens(text_content, model=self.model)
             # with a summary message, the real messages start at index 2
             num_tokens_messages = (
                 num_tokens_from_messages(messages=in_context_messages_openai[2:], model=self.model)
@@ -1252,7 +1252,7 @@ class Agent(BaseAgent):
             previous_message_count=self.message_manager.size(actor=self.user, agent_id=self.agent_state.id),
             archival_memory_size=self.agent_manager.passage_size(actor=self.user, agent_id=self.agent_state.id),
         )
-        num_tokens_external_memory_summary = count_tokens(external_memory_summary)
+        num_tokens_external_memory_summary = count_tokens(external_memory_summary, model=self.model)
 
         # tokens taken up by function definitions
         agent_state_tool_jsons = [t.json_schema for t in self.agent_state.tools]
@@ -1341,9 +1341,9 @@ class Agent(BaseAgent):
             external_memory_summary = ""
             core_memory = ""
 
-        num_tokens_system = count_tokens(system_prompt)
-        num_tokens_core_memory = count_tokens(core_memory)
-        num_tokens_external_memory_summary = count_tokens(external_memory_summary)
+        num_tokens_system = count_tokens(system_prompt, model=self.model)
+        num_tokens_core_memory = count_tokens(core_memory, model=self.model)
+        num_tokens_external_memory_summary = count_tokens(external_memory_summary, model=self.model)
 
         # Check if there's a summary message in the message queue
         if (
@@ -1359,7 +1359,7 @@ class Agent(BaseAgent):
             text_content = in_context_messages[1].content[0].text
             assert text_content is not None
             summary_memory = text_content
-            num_tokens_summary_memory = count_tokens(text_content)
+            num_tokens_summary_memory = count_tokens(text_content, model=self.model)
             # with a summary message, the real messages start at index 2
             num_tokens_messages = (
                 num_tokens_from_messages(messages=in_context_messages_openai[2:], model=self.model)

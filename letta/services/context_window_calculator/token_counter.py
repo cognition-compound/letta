@@ -89,7 +89,7 @@ class TiktokenCounter(TokenCounter):
     async def count_text_tokens(self, text: str) -> int:
         if not text:
             return 0
-        return count_tokens(text)
+        return count_tokens(text, model=self.model)
 
     @trace_method
     @async_redis_cache(
