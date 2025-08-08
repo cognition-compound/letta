@@ -113,12 +113,10 @@ class TestResponsesAPIConversion:
             "output": [
                 {
                     "type": "message",
-                    "message": {
-                        "role": "assistant",
-                        "content": [
-                            {"type": "text", "text": "Hello! I'm doing great, thank you for asking."}
-                        ]
-                    }
+                    "role": "assistant",
+                    "content": [
+                        {"type": "output_text", "text": "Hello! I'm doing great, thank you for asking."}
+                    ]
                 }
             ],
             "usage": {
@@ -126,9 +124,10 @@ class TestResponsesAPIConversion:
                 "completion_tokens": 12,
                 "total_tokens": 32
             },
-            "reasoning": [
-                {"text": "The user is greeting me and asking how I am. I should respond politely."}
-            ]
+            "reasoning": {
+                "effort": "low",
+                "summary": "The user is greeting me and asking how I am. I should respond politely."
+            }
         }
         
         result = self.client._convert_responses_to_chat_completion(responses_data)
@@ -147,8 +146,8 @@ class TestResponsesAPIConversion:
     def test_convert_response_content(self):
         """Test converting Responses API content format to string."""
         content_items = [
-            {"type": "text", "text": "Hello "},
-            {"type": "text", "text": "world!"}
+            {"type": "output_text", "text": "Hello "},
+            {"type": "output_text", "text": "world!"}
         ]
         
         result = self.client._convert_response_content(content_items)
@@ -162,18 +161,19 @@ class TestResponsesAPIConversion:
     def test_extract_reasoning_content(self):
         """Test extracting reasoning content from response."""
         response_data = {
-            "reasoning": [
-                {"text": "First, I need to understand the user's question."},
-                {"text": "Then, I should provide a helpful response."}
-            ]
+            "reasoning": {
+                "effort": "medium",
+                "summary": "First, I need to understand the user's question. Then, I should provide a helpful response."
+            }
         }
         
         result = self.client._extract_reasoning_content(response_data)
-        assert result == "First, I need to understand the user's question.\nThen, I should provide a helpful response."
+        assert "effort: medium" in result
+        assert "summary: First, I need to understand the user's question" in result
 
     def test_extract_reasoning_content_empty(self):
         """Test extracting reasoning content when none exists."""
-        response_data = {"reasoning": []}
+        response_data = {"reasoning": {}}
         
         result = self.client._extract_reasoning_content(response_data)
         assert result is None
@@ -206,7 +206,7 @@ class TestResponsesAPIConversion:
         # Should have Responses API format
         assert "input" in result  # Not "messages"
         assert "model" in result
-        assert "max_completion_tokens" in result
+        assert "max_output_tokens" in result
         assert "tools" in result
         assert "tool_choice" in result
         
@@ -257,12 +257,10 @@ class TestResponsesAPIConversion:
             "output": [
                 {
                     "type": "message",
-                    "message": {
-                        "role": "assistant",
-                        "content": [
-                            {"type": "text", "text": "Hello! Nice to meet you!"}
-                        ]
-                    }
+                    "role": "assistant",
+                    "content": [
+                        {"type": "output_text", "text": "Hello! Nice to meet you!"}
+                    ]
                 }
             ],
             "usage": {
@@ -270,9 +268,9 @@ class TestResponsesAPIConversion:
                 "completion_tokens": 8,
                 "total_tokens": 23
             },
-            "reasoning": [
-                {"text": "User is greeting me, I should respond warmly."}
-            ]
+            "reasoning": {
+                "summary": "User is greeting me, I should respond warmly."
+            }
         }
         
         # Convert response
