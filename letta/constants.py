@@ -176,7 +176,13 @@ REQUEST_HEARTBEAT_DESCRIPTION = "Request an immediate heartbeat after function e
 
 
 # Structured output models
-STRUCTURED_OUTPUT_MODELS = {"gpt-4o", "gpt-4o-mini", "gpt-5"}
+STRUCTURED_OUTPUT_MODELS = {
+    "gpt-4o", "gpt-4o-mini", 
+    # GPT-5 family
+    "gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-5-chat-latest",
+    # GPT-5 date-pinned versions  
+    "gpt-5-2025-08-07", "gpt-5-mini-2025-08-07", "gpt-5-nano-2025-08-07", "gpt-5-chat-latest-2025-08-07"
+}
 
 # LOGGER_LOG_LEVEL is use to convert Text to Logging level value for logging mostly for Cli input to setting level
 LOGGER_LOG_LEVELS = {"CRITICAL": CRITICAL, "ERROR": ERROR, "WARN": WARN, "WARNING": WARNING, "INFO": INFO, "DEBUG": DEBUG, "NOTSET": NOTSET}
@@ -227,8 +233,16 @@ LLM_MAX_TOKENS = {
     "gpt-4.1-mini-2025-04-14": 1047576,
     "gpt-4.1-nano": 1047576,
     "gpt-4.1-nano-2025-04-14": 1047576,
-    # gpt-5 (400k total: 272k input + 128k reasoning/output)
+    # gpt-5 family (400k total: 272k input + 128k reasoning/output)
     "gpt-5": 400000,
+    "gpt-5-mini": 400000,
+    "gpt-5-nano": 400000,
+    "gpt-5-chat-latest": 400000,
+    # GPT-5 date-pinned versions
+    "gpt-5-2025-08-07": 400000,
+    "gpt-5-mini-2025-08-07": 400000,
+    "gpt-5-nano-2025-08-07": 400000,
+    "gpt-5-chat-latest-2025-08-07": 400000,
     # gpt-4.5-preview
     "gpt-4.5-preview": 128000,
     "gpt-4.5-preview-2025-02-27": 128000,

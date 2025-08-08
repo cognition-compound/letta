@@ -179,9 +179,9 @@ class LLMConfig(BaseModel):
                 context_window=256000,
                 max_tokens=8192,
             )
-        elif model_name == "gpt-5":
+        elif model_name.startswith("gpt-5"):
             return cls(
-                model="gpt-5",
+                model=model_name,
                 model_endpoint_type="openai",
                 model_endpoint="https://api.openai.com/v1",
                 model_wrapper=None,
