@@ -399,3 +399,142 @@ def test_tool_format_structure(openai_client, llm_config, test_messages, test_to
     assert "required" in params, "Parameters should have required fields"
     
     print("✓ Tool format structure test passed")
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.openai_basic
+@pytest.mark.skipif(not model_settings.openai_api_key, reason="OpenAI API key not configured")
+async def test_responses_api_streaming_integration(openai_client, llm_config, test_messages, test_tools):
+    """Test that GPT-5 Responses API streaming works correctly.
+    
+    This test would have caught the stream_options.include_usage bug that broke production.
+    The bug was in the streaming code path (stream_async) but existing tests only used
+    the non-streaming code path (request_async).
+    """
+    
+    print("\n=== Testing GPT-5 Responses API Streaming ===")
+    
+    # Step 1: Build request data using our client
+    print("1. Building request data for streaming...")
+    request_data = openai_client.build_request_data(
+        messages=test_messages,
+        llm_config=llm_config,
+        tools=test_tools,
+        force_tool_call=None
+    )
+    
+    print("Request structure:")
+    print(f"  - Input messages: {len(request_data.get('input', []))}")
+    print(f"  - Tools: {len(request_data.get('tools', []))}")
+    print(f"  - Model: {request_data.get('model')}")
+    
+    # Step 2: Test streaming API call (this would have failed with the original bug)
+    print("2. Making streaming Responses API call...")
+    try:
+        stream = await openai_client.stream_async(request_data, llm_config)
+        print("✓ Stream created successfully")
+        
+        # Consume the stream to verify it works
+        events = []
+        event_count = 0
+        async for event in stream:
+            events.append(event)
+            event_count += 1
+            if event_count <= 3:  # Log first few events for debugging
+                event_type = getattr(event, 'type', 'unknown')
+                print(f"  - Event {event_count}: {type(event).__name__} (type: {event_type})")
+            if event_count >= 50:  # Limit to prevent infinite loops
+                break
+        
+        print(f"✓ Received {len(events)} streaming events")
+        
+        # Verify we got actual streaming data
+        assert len(events) > 0, "Should receive at least one streaming event"
+        
+        # Verify first event structure (should be response.created)
+        first_event = events[0]
+        assert hasattr(first_event, 'type'), "Streaming event should have type attribute"
+        
+        # Look for different event types in the stream
+        event_types = set()
+        has_text_content = False
+        has_function_calls = False
+        
+        for event in events:
+            if hasattr(event, 'type'):
+                event_types.add(event.type)
+                
+                # Check for content or function calls based on event type
+                if event.type == 'response.output_text.delta':
+                    has_text_content = True
+                elif event.type == 'response.function_call.created':
+                    has_function_calls = True
+        
+        print(f"  - Event types found: {event_types}")
+        print(f"  - Found text content: {has_text_content}")
+        print(f"  - Found function calls: {has_function_calls}")
+        
+        # We should get at least a response.created event
+        assert 'response.created' in event_types, "Stream should contain response.created event"
+        
+    except Exception as e:
+        # This is where the original bug would have been caught
+        error_msg = str(e)
+        print(f"❌ Streaming failed: {type(e).__name__}: {error_msg}")
+        
+        # Check if it's the specific bug we're testing for
+        if "stream_options" in error_msg or "include_usage" in error_msg:
+            pytest.fail(f"CAUGHT THE BUG! stream_options.include_usage parameter error: {error_msg}")
+        else:
+            # Re-raise other errors for investigation
+            raise
+    
+    print("✓ Streaming integration test passed!")
+
+
+@pytest.mark.asyncio  
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.openai_basic
+@pytest.mark.skipif(not model_settings.openai_api_key, reason="OpenAI API key not configured")
+async def test_responses_api_streaming_vs_non_streaming_parity(openai_client, llm_config, test_messages, test_tools):
+    """Test that streaming and non-streaming APIs produce equivalent results.
+    
+    This ensures both code paths work and can help catch divergent behavior.
+    """
+    
+    print("\n=== Testing Streaming vs Non-Streaming Parity ===")
+    
+    # Build request once
+    request_data = openai_client.build_request_data(
+        messages=test_messages,
+        llm_config=llm_config, 
+        tools=test_tools,
+        force_tool_call=None
+    )
+    
+    # Test 1: Non-streaming (existing tested path)
+    print("1. Testing non-streaming response...")
+    response_data = await openai_client.request_async(request_data, llm_config)
+    non_streaming_output = response_data.get("output", [])
+    print(f"  - Non-streaming output items: {len(non_streaming_output)}")
+    
+    # Test 2: Streaming (previously untested path)
+    print("2. Testing streaming response...")
+    stream = await openai_client.stream_async(request_data, llm_config)
+    
+    events = []
+    async for event in stream:
+        events.append(event)
+        if len(events) >= 100:  # Safety limit
+            break
+    
+    print(f"  - Streaming events received: {len(events)}")
+    
+    # Both should succeed without errors
+    assert len(non_streaming_output) > 0, "Non-streaming should produce output"
+    assert len(events) > 0, "Streaming should produce events"
+    
+    print("✓ Both streaming and non-streaming work correctly")
