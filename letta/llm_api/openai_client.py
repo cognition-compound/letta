@@ -332,7 +332,7 @@ class OpenAIClient(LLMClientBase):
                     "role": item.get("role", "assistant"),
                     "content": content,
                     "tool_calls": tool_calls if tool_calls else None,  # Add converted tool calls
-                    "reasoning_content": self._extract_reasoning_content(response_data),
+                    "reasoning_content": self._serialize_reasoning_for_preservation(response_data),
                 },
                 "finish_reason": response_data.get("status", "stop"),  # Map status to finish_reason
             }
@@ -346,7 +346,7 @@ class OpenAIClient(LLMClientBase):
                     "role": "assistant", 
                     "content": None,  # No text content, only tool calls
                     "tool_calls": tool_calls,
-                    "reasoning_content": self._extract_reasoning_content(response_data),
+                    "reasoning_content": self._serialize_reasoning_for_preservation(response_data),
                 },
                 "finish_reason": response_data.get("status", "stop"),
             }
@@ -355,7 +355,7 @@ class OpenAIClient(LLMClientBase):
         # Handle GPT-5 reasoning-only responses (when no message items exist)
         elif not message_items and not tool_calls and reasoning_items:
             # Create a synthetic message from reasoning for backward compatibility
-            reasoning_content = self._extract_reasoning_content(response_data)
+            reasoning_content = self._serialize_reasoning_for_preservation(response_data)
 
             choice = {
                 "index": 0,
@@ -402,62 +402,70 @@ class OpenAIClient(LLMClientBase):
 
         return "".join(text_parts)
 
-    def _extract_reasoning_content(self, response_data: dict) -> Optional[str]:
-        """Extract reasoning content from Responses API response.
-
+    def _serialize_reasoning_for_preservation(self, response_data: dict) -> Optional[str]:
+        """Serialize the entire reasoning field from OpenAI for exact preservation.
+        
+        This ensures we can reconstruct the EXACT reasoning object when converting
+        back to OpenAI format, maintaining perfect round-trip fidelity.
+        
         Args:
             response_data: Raw response data from Responses API
-
+            
         Returns:
-            Reasoning content if available, None otherwise
+            JSON-serialized reasoning object if present, None otherwise.
         """
-        # First, try to extract actual reasoning content from output items
+        # First check for reasoning at the top level (most common)
+        top_level_reasoning = response_data.get("reasoning")
+        if top_level_reasoning is not None:  # Handle empty dict {} as valid
+            try:
+                return json.dumps(top_level_reasoning, ensure_ascii=False, separators=(',', ':'))
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Failed to JSON serialize top-level reasoning: {e}")
+                
+        # Also check for reasoning items in output (future OpenAI format possibility)
         output_items = response_data.get("output", [])
-        reasoning_content_parts = []
+        reasoning_items = []
         
         for item in output_items:
             if item.get("type") == "reasoning":
-                content = item.get("content")
-                if content:
-                    # Content could be a list or string
-                    if isinstance(content, list):
-                        # Extract text from content items (similar to message content)
-                        text_parts = []
-                        for content_item in content:
-                            if isinstance(content_item, dict) and content_item.get("type") == "text":
-                                text_parts.append(content_item.get("text", ""))
-                            elif isinstance(content_item, str):
-                                text_parts.append(content_item)
-                        reasoning_content_parts.append("".join(text_parts))
-                    elif isinstance(content, str):
-                        reasoning_content_parts.append(content)
-
-        # If we found actual reasoning content, return it
-        if reasoning_content_parts:
-            return "\n".join(reasoning_content_parts)
-
-        # Fallback: extract metadata from top-level reasoning object
-        reasoning_data = response_data.get("reasoning", {})
-        if not reasoning_data or not isinstance(reasoning_data, dict):
-            return None
-
-        reasoning_parts = []
-        # Extract different reasoning components
-        for key, value in reasoning_data.items():
-            if value is not None and value != "":
-                reasoning_parts.append(f"{key}: {value}")
-
-        return "\n".join(reasoning_parts) if reasoning_parts else None
+                reasoning_items.append(item)
+                
+        if reasoning_items:
+            try:
+                # Store all reasoning items
+                reasoning_data = {
+                    "output_reasoning_items": reasoning_items
+                }
+                return json.dumps(reasoning_data, ensure_ascii=False, separators=(',', ':'))
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Failed to JSON serialize reasoning items: {e}")
+                
+        return None
 
     def _process_reasoning_content(self, chat_completion_response: ChatCompletionResponse, response_data: dict):
-        """Process reasoning content for reasoning models like GPT-5."""
-        reasoning_content = self._extract_reasoning_content(response_data)
-        if reasoning_content and chat_completion_response.choices:
-            # Add reasoning content to the first choice's message
-            if not hasattr(chat_completion_response.choices[0].message, "reasoning_content"):
-                chat_completion_response.choices[0].message.reasoning_content = reasoning_content
-            else:
-                chat_completion_response.choices[0].message.reasoning_content = reasoning_content
+        """Process reasoning content for reasoning models.
+        
+        This method:
+        1. Serializes the entire reasoning object for exact preservation
+        2. Sets omitted flag when reasoning is present but not readable
+        """
+        if not chat_completion_response.choices:
+            return
+            
+        message = chat_completion_response.choices[0].message
+        
+        # Always serialize the complete reasoning object for preservation
+        serialized_reasoning = self._serialize_reasoning_for_preservation(response_data)
+        if serialized_reasoning:
+            # Store serialized reasoning in reasoning_content field
+            message.reasoning_content = serialized_reasoning
+            # Set omitted flag since reasoning content is serialized/not directly readable
+            message.omitted_reasoning_content = True
+            logger.debug(f"[REASONING] Preserved reasoning object ({len(serialized_reasoning)} chars) - set omitted flag")
+        else:
+            # No reasoning data at all - still set omitted flag for reasoning models
+            message.omitted_reasoning_content = True
+            logger.debug(f"[REASONING] No reasoning data found - set omitted flag")
 
     @trace_method
     def build_request_data(
@@ -557,6 +565,8 @@ class OpenAIClient(LLMClientBase):
             data["reasoning"] = {
                 "effort": "low"  # Use low effort for faster responses
             }
+            # Note: reasoning.content is not available via API - only reasoning.encrypted_content
+            # OpenAI intentionally does not expose actual reasoning thoughts
 
         # Handle special endpoint configurations
         if llm_config.model_endpoint == LETTA_MODEL_ENDPOINT:
@@ -716,9 +726,6 @@ class OpenAIClient(LLMClientBase):
         # Handle reasoning content for reasoning models
         if is_openai_reasoning_model(llm_config.model):
             self._process_reasoning_content(chat_completion_response, response_data)
-            # Also set the omitted reasoning flag for backward compatibility
-            if chat_completion_response.choices:
-                chat_completion_response.choices[0].message.omitted_reasoning_content = True
 
         return chat_completion_response
 

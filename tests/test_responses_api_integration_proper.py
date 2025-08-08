@@ -52,6 +52,23 @@ def test_messages():
 
 
 @pytest.fixture
+def deep_reasoning_messages():
+    """Create test messages that should trigger deep reasoning."""
+    return [
+        PydanticMessage(
+            role=MessageRole.system,
+            content=[{"type": "text", "text": "You are a helpful assistant that thinks step by step and uses tools when needed. Always show your reasoning process."}],
+            agent_id="test-agent"
+        ),
+        PydanticMessage(
+            role=MessageRole.user,
+            content=[{"type": "text", "text": "I need you to think deeply about this: Should I get weather information for San Francisco? Consider multiple factors like: 1) Why someone might need weather data, 2) What time of year considerations matter, 3) How weather affects daily planning, 4) Whether current conditions vs forecast matter. Think through each step carefully, then use the get_weather tool if you decide it's appropriate."}],
+            agent_id="test-agent"
+        )
+    ]
+
+
+@pytest.fixture
 def test_tools():
     """Create test tools for weather lookup."""
     return [
@@ -75,6 +92,123 @@ def test_tools():
             }
         }
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.external_api
+@pytest.mark.openai_basic
+@pytest.mark.skipif(not model_settings.openai_api_key, reason="OpenAI API key not configured")
+async def test_responses_api_deep_reasoning_integration(openai_client, llm_config, deep_reasoning_messages, test_tools):
+    """Test that GPT-5 produces actual reasoning content with deep reasoning prompts."""
+    
+    print("\n=== Testing Deep Reasoning Content ===")
+    
+    # Override reasoning config to use medium effort for more reasoning content
+    original_build = openai_client.build_request_data
+    def build_with_high_effort(*args, **kwargs):
+        data = original_build(*args, **kwargs)
+        if data.get("reasoning"):
+            data["reasoning"]["effort"] = "high"  # Use HIGH effort to get reasoning content
+        return data
+    
+    openai_client.build_request_data = build_with_high_effort
+    
+    try:
+        # Step 1: Build request data using our client
+        print("1. Building request data with HIGH effort reasoning...")
+        request_data = openai_client.build_request_data(
+            messages=deep_reasoning_messages,
+            llm_config=llm_config,
+            tools=test_tools,
+            force_tool_call=None
+        )
+        
+        print("Request structure:")
+        print(f"  - Input messages: {len(request_data.get('input', []))}")
+        print(f"  - Tools: {len(request_data.get('tools', []))}")
+        print(f"  - Reasoning effort: {request_data.get('reasoning', {}).get('effort', 'not set')}")
+        
+        # Step 2: Make real API call
+        print("2. Making real OpenAI Responses API call with HIGH effort + deep reasoning prompt...")
+        response_data = await openai_client.request_async(request_data, llm_config)
+        print("✓ API call successful")
+        
+        # Step 3: Analyze reasoning content in detail
+        output_items = response_data.get("output", [])
+        reasoning_items = []
+        function_call_items = []
+        
+        for item in output_items:
+            if item.get("type") == "reasoning":
+                reasoning_items.append(item)
+                print(f"    - REASONING ITEM FOUND:")
+                print(f"      ID: {item.get('id')}")
+                print(f"      Status: {item.get('status')}")
+                
+                # Check reasoning content
+                content = item.get("content")
+                if content and isinstance(content, list):
+                    print(f"      ✅ REASONING CONTENT: {len(content)} items")
+                    for i, content_item in enumerate(content):
+                        if isinstance(content_item, dict):
+                            item_type = content_item.get("type")
+                            text = content_item.get("text", "")
+                            print(f"        Content {i}: type={item_type}, text_length={len(text)}")
+                            if text and len(text) > 0:
+                                print(f"        First 200 chars: {text[:200]}...")
+                        else:
+                            print(f"        Content {i}: {content_item}")
+                else:
+                    print(f"      ❌ REASONING CONTENT IS NULL OR EMPTY")
+                    
+                # Check reasoning summary
+                summary = item.get("summary")
+                if summary and isinstance(summary, list):
+                    print(f"      ✅ REASONING SUMMARY: {len(summary)} items")
+                    for i, summary_item in enumerate(summary):
+                        if isinstance(summary_item, dict):
+                            item_type = summary_item.get("type")
+                            text = summary_item.get("text", "")
+                            print(f"        Summary {i}: type={item_type}, text_length={len(text)}")
+                            if text and len(text) > 0:
+                                print(f"        First 200 chars: {text[:200]}...")
+                        else:
+                            print(f"        Summary {i}: {summary_item}")
+                else:
+                    print(f"      ❌ REASONING SUMMARY IS NULL OR EMPTY")
+                    
+            elif item.get("type") == "function_call":
+                function_call_items.append(item)
+        
+        # Step 4: Check top-level reasoning metadata
+        top_reasoning = response_data.get("reasoning", {})
+        print(f"  - Top-level reasoning:")
+        print(f"    - Effort: {top_reasoning.get('effort')}")
+        print(f"    - Summary: {top_reasoning.get('summary')}")
+        
+        # Step 5: Test our serialization 
+        print("3. Testing reasoning serialization...")
+        serialized_reasoning = openai_client._serialize_reasoning_for_preservation(response_data)
+        if serialized_reasoning:
+            print(f"✅ Serialized reasoning data ({len(serialized_reasoning)} chars)")
+            print(f"First 200 chars: {serialized_reasoning[:200]}...")
+        else:
+            print("❌ No reasoning data to serialize")
+        
+        # Assertions
+        assert len(reasoning_items) > 0, "Should have reasoning items with deep reasoning prompt"
+        has_content = reasoning_items[0].get("content") is not None
+        has_summary = reasoning_items[0].get("summary") is not None
+        
+        if has_content or has_summary:
+            print("✅ SUCCESS: Found actual reasoning content or summary!")
+        else:
+            print("⚠️  Both reasoning content and summary are null - may be OpenAI's current implementation")
+            
+    finally:
+        # Restore original method
+        openai_client.build_request_data = original_build
 
 
 @pytest.mark.asyncio

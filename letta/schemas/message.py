@@ -565,8 +565,24 @@ class Message(BaseMessage):
         else:
             raise ValueError(f"Invalid content type: {type(openai_message_dict['content'])}")
 
-        # TODO(caren) bad assumption here that "reasoning_content" always comes before "redacted_reasoning_content"
-        if "reasoning_content" in openai_message_dict and openai_message_dict["reasoning_content"]:
+        # Handle OpenAI reasoning field by serializing it for preservation
+        if "reasoning" in openai_message_dict and openai_message_dict["reasoning"]:
+            reasoning_obj = openai_message_dict["reasoning"]
+            try:
+                # Serialize the reasoning object to preserve it exactly
+                serialized_reasoning = json.dumps(reasoning_obj, ensure_ascii=False, separators=(',', ':'))
+                content.append(
+                    ReasoningContent(
+                        reasoning=serialized_reasoning,
+                        is_native=True,
+                        signature=None,  # OpenAI reasoning doesn't have signatures
+                    ),
+                )
+            except (TypeError, ValueError) as e:
+                logger.warning(f"Failed to serialize reasoning object: {e}")
+        
+        # Handle regular reasoning_content field (e.g., from DeepSeek)
+        elif "reasoning_content" in openai_message_dict and openai_message_dict["reasoning_content"]:
             content.append(
                 ReasoningContent(
                     reasoning=openai_message_dict["reasoning_content"],
@@ -751,7 +767,14 @@ class Message(BaseMessage):
             text = [content for content in self.content if isinstance(content, TextContent)]
             assert len(text) == 1, f"multiple text content parts found in a single message: {self.content}"
             text_content = text[0].text
-            parse_content_parts = True
+            
+            # Only set parse_content_parts for truly multimodal content (images, etc.)
+            # ReasoningContent and similar should be handled separately, not as multimodal
+            non_reasoning_content = [
+                content for content in self.content 
+                if not isinstance(content, (ReasoningContent, OmittedReasoningContent, RedactedReasoningContent))
+            ]
+            parse_content_parts = len(non_reasoning_content) > 1
         else:
             text_content = None
 
@@ -791,8 +814,8 @@ class Message(BaseMessage):
         elif self.role == "assistant":
             assert self.tool_calls is not None or text_content is not None or self.content is not None
 
-            # Check if we have multimodal content
-            if self.content and (len(self.content) > 1 or (len(self.content) == 1 and isinstance(self.content[0], ImageContent))):
+            # Check if we have truly multimodal content (images, etc.) - exclude reasoning content
+            if parse_content_parts:
                 # Multimodal content - return as array
                 content_parts = []
                 for content in self.content:
@@ -800,6 +823,7 @@ class Message(BaseMessage):
                         content_parts.append({"type": "text", "text": content.text})
                     elif isinstance(content, ImageContent):
                         content_parts.append({"type": "image_url", "image_url": {"url": content.image_url, "detail": content.detail}})
+                    # Skip reasoning content - it's handled separately
                 openai_message = {
                     "content": content_parts,
                     "role": self.role,
@@ -846,12 +870,34 @@ class Message(BaseMessage):
             else:
                 warnings.warn(f"Using OpenAI with invalid 'name' field (name={self.name} role={self.role}).")
 
-        if parse_content_parts and self.content is not None:
+        # Always process reasoning content, regardless of parse_content_parts
+        if self.content is not None:
             for content in self.content:
                 if isinstance(content, ReasoningContent):
-                    openai_message["reasoning_content"] = content.reasoning
+                    # Check if reasoning content is JSON-serialized OpenAI reasoning object
+                    reasoning_text = content.reasoning
+                    if reasoning_text:
+                        try:
+                            # Try to deserialize as JSON - if successful, it's a preserved OpenAI reasoning object
+                            reasoning_obj = json.loads(reasoning_text)
+                            
+                            # Handle different serialization formats
+                            if isinstance(reasoning_obj, dict):
+                                if "output_reasoning_items" in reasoning_obj:
+                                    # This was serialized from output items format
+                                    # For now, we don't reconstruct output items - OpenAI doesn't expect that in requests
+                                    pass
+                                else:
+                                    # This was serialized from top-level reasoning format - reconstruct it
+                                    openai_message["reasoning"] = reasoning_obj
+                            
+                        except (json.JSONDecodeError, TypeError):
+                            # Not JSON - treat as regular reasoning content (e.g., from DeepSeek)
+                            openai_message["reasoning_content"] = reasoning_text
+                    
                     if content.signature:
                         openai_message["reasoning_content_signature"] = content.signature
+                        
                 if isinstance(content, RedactedReasoningContent):
                     openai_message["redacted_reasoning_content"] = content.data
 

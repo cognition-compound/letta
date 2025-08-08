@@ -5,6 +5,7 @@ Tests the conversion between Chat Completions API format and Responses API forma
 for proper GPT-5 support and future-proofing.
 """
 
+import json
 import pytest
 from datetime import datetime
 from unittest.mock import Mock
@@ -158,8 +159,8 @@ class TestResponsesAPIConversion:
         result = self.client._convert_response_content([])
         assert result == ""
 
-    def test_extract_reasoning_content(self):
-        """Test extracting reasoning content from response."""
+    def test_serialize_reasoning_for_preservation(self):
+        """Test serializing reasoning content for exact preservation."""
         response_data = {
             "reasoning": {
                 "effort": "medium",
@@ -167,16 +168,19 @@ class TestResponsesAPIConversion:
             }
         }
         
-        result = self.client._extract_reasoning_content(response_data)
-        assert "effort: medium" in result
-        assert "summary: First, I need to understand the user's question" in result
+        result = self.client._serialize_reasoning_for_preservation(response_data)
+        assert result is not None
+        # Should be JSON-serialized
+        deserialized = json.loads(result)
+        assert deserialized["effort"] == "medium"
+        assert "First, I need to understand" in deserialized["summary"]
 
-    def test_extract_reasoning_content_empty(self):
-        """Test extracting reasoning content when none exists."""
+    def test_serialize_reasoning_for_preservation_empty(self):
+        """Test serializing reasoning content when none exists."""
         response_data = {"reasoning": {}}
         
-        result = self.client._extract_reasoning_content(response_data)
-        assert result is None
+        result = self.client._serialize_reasoning_for_preservation(response_data)
+        assert result == "{}"  # Empty object serializes to "{}"
 
     def test_build_request_data_responses_format(self):
         """Test that build_request_data produces Responses API format."""

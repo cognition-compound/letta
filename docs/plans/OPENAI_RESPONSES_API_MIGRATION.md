@@ -271,7 +271,7 @@ def _convert_responses_to_chat_completion(self, response_data: dict) -> dict:
                     "role": message_data.get("role", "assistant"),
                     "content": content,
                     "tool_calls": message_data.get("tool_calls"),  # Should be compatible
-                    "reasoning_content": self._extract_reasoning_content(response_data)
+                    "reasoning_content": self._serialize_reasoning_for_preservation(response_data)
                 },
                 "finish_reason": response_data.get("status", "stop")  # Map status to finish_reason
             }

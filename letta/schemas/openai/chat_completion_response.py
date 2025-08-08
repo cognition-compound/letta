@@ -59,7 +59,7 @@ class Message(BaseModel):
     tool_calls: Optional[List[ToolCall]] = None
     role: str
     function_call: Optional[FunctionCall] = None  # Deprecated
-    reasoning_content: Optional[str] = None  # Used in newer reasoning APIs, e.g. DeepSeek
+    reasoning_content: Optional[str] = None  # Used for: 1) DeepSeek text, 2) JSON-serialized OpenAI reasoning object
     reasoning_content_signature: Optional[str] = None  # NOTE: for Anthropic
     redacted_reasoning_content: Optional[str] = None  # NOTE: for Anthropic
     omitted_reasoning_content: bool = False  # NOTE: for OpenAI o1/o3
