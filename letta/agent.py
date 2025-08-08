@@ -37,7 +37,7 @@ from letta.llm_api.helpers import calculate_summarizer_cutoff, get_token_counts_
 from letta.llm_api.llm_api_tools import create
 from letta.llm_api.llm_client import LLMClient
 from letta.local_llm.constants import INNER_THOUGHTS_KWARG
-from letta.local_llm.utils import num_tokens_from_functions, num_tokens_from_messages
+from letta.utils.token_counting import num_tokens_from_functions, num_tokens_from_messages
 from letta.log import get_logger
 from letta.memory import summarize_messages
 from letta.orm import User
@@ -74,7 +74,8 @@ from letta.services.tool_manager import ToolManager
 from letta.settings import settings, summarizer_settings
 from letta.streaming_interface import StreamingRefreshCLIInterface
 from letta.system import get_heartbeat, get_token_limit_warning, package_function_response, package_summarize_message, package_user_message
-from letta.utils import count_tokens, get_friendly_error_msg, get_tool_call_id, log_telemetry, parse_json, validate_function_response
+from letta.utils import get_friendly_error_msg, get_tool_call_id, log_telemetry, parse_json, validate_function_response
+from letta.utils.token_counting import count_tokens
 
 logger = get_logger(__name__)
 

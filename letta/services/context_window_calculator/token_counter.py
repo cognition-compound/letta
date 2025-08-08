@@ -89,6 +89,7 @@ class TiktokenCounter(TokenCounter):
     async def count_text_tokens(self, text: str) -> int:
         if not text:
             return 0
+        from letta.utils.token_counting import count_tokens
         return count_tokens(text, model=self.model)
 
     @trace_method
@@ -100,7 +101,7 @@ class TiktokenCounter(TokenCounter):
     async def count_message_tokens(self, messages: List[Dict[str, Any]]) -> int:
         if not messages:
             return 0
-        from letta.local_llm.utils import num_tokens_from_messages
+        from letta.utils.token_counting import num_tokens_from_messages
 
         return num_tokens_from_messages(messages=messages, model=self.model)
 
@@ -113,7 +114,7 @@ class TiktokenCounter(TokenCounter):
     async def count_tool_tokens(self, tools: List[OpenAITool]) -> int:
         if not tools:
             return 0
-        from letta.local_llm.utils import num_tokens_from_functions
+        from letta.utils.token_counting import num_tokens_from_functions
 
         # Extract function definitions from OpenAITool objects
         functions = [t.function.model_dump() for t in tools]
