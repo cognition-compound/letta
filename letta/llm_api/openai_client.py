@@ -712,16 +712,6 @@ class OpenAIClient(LLMClientBase):
                 "endpoint": llm_config.model_endpoint or "default"
             })
             
-            # Check for specific compatibility issues
-            error_str = str(e).lower()
-            if "stream_options" in error_str and "include_usage" in error_str:
-                log_event("llm_compatibility_issue_detected", {
-                    "issue_type": "stream_options_unsupported",
-                    "model": request_data.get("model", "unknown"),
-                    "api_type": "responses", 
-                    "provider": "openai",
-                    "fix_needed": "remove stream_options.include_usage parameter"
-                })
             
             logger.error(f"[API_ERROR] Responses API call failed: {type(e).__name__}: {str(e)}")
             logger.error(f"[API_ERROR] Request model: {request_data.get('model')}, tools: {len(request_data.get('tools', []))}")
@@ -776,13 +766,6 @@ class OpenAIClient(LLMClientBase):
             kwargs = await self._prepare_client_kwargs_async(llm_config)
             client = AsyncOpenAI(**kwargs)
             
-            # Log compatibility note for stream_options
-            log_event("llm_stream_compatibility_note", {
-                "model": model,
-                "api_type": "responses",
-                "note": "stream_options.include_usage disabled for GPT-5 Responses API compatibility",
-                "issue": "gpt5_responses_api_stream_options_unsupported"
-            })
             
             response_stream = await client.responses.create(**request_data, stream=True)
             
@@ -807,17 +790,6 @@ class OpenAIClient(LLMClientBase):
                 "provider": "openai"
             })
             
-            # Check for specific compatibility issues in streaming
-            error_str = str(e).lower()
-            if "stream_options" in error_str and "include_usage" in error_str:
-                log_event("llm_compatibility_issue_detected", {
-                    "issue_type": "stream_options_unsupported", 
-                    "model": model,
-                    "api_type": "responses",
-                    "stream_mode": True,
-                    "provider": "openai",
-                    "fix_needed": "remove stream_options.include_usage parameter"
-                })
             
             raise
 
