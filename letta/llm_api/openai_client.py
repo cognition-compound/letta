@@ -522,18 +522,56 @@ class OpenAIClient(LLMClientBase):
         return data
 
     @trace_method
+    def to_openai_format(self, response) -> dict:
+        """Convert our internal response format to clean OpenAI SDK format.
+        
+        Uses blacklist approach: include everything except clearly internal fields.
+        This is more robust than whitelisting since we don't need to guess required fields.
+        """
+        # Start with the raw response
+        response_dict = response.model_dump()
+        
+        # Clean the output items by removing only internal fields
+        if "output" in response_dict and response.output:
+            # Fields that are clearly internal/metadata and shouldn't be passed as input
+            INTERNAL_FIELDS = {
+                "status",           # Response processing status
+                "encrypted_content" # Internal security field
+            }
+            
+            clean_output = []
+            
+            for item in response.output:
+                item_dict = item.model_dump() if hasattr(item, 'model_dump') else item
+                
+                # Include all fields except blacklisted internal ones
+                clean_item = {
+                    k: v for k, v in item_dict.items() 
+                    if k not in INTERNAL_FIELDS
+                }
+                
+                clean_output.append(clean_item)
+            
+            response_dict["output"] = clean_output
+        
+        return response_dict
+
     def request(self, request_data: dict, llm_config: LLMConfig) -> dict:
         """
-        Performs underlying synchronous request to OpenAI Responses API and returns raw response dict.
+        Performs underlying synchronous request to OpenAI Responses API.
+        Returns response in clean OpenAI SDK format (ready for input reuse).
         """
         client = OpenAI(**self._prepare_client_kwargs(llm_config))
         response = client.responses.create(**request_data)
-        return response.model_dump()
+        
+        # Convert to clean OpenAI format (matches official SDK behavior)
+        return self.to_openai_format(response)
 
     @trace_method
     async def request_async(self, request_data: dict, llm_config: LLMConfig) -> dict:
         """
-        Performs underlying asynchronous request to OpenAI Responses API and returns raw response dict.
+        Performs underlying asynchronous request to OpenAI Responses API.
+        Returns response in clean OpenAI SDK format (ready for input reuse).
         """
         try:
             logger.info(f"[DEBUG] Attempting Responses API call with model: {llm_config.model}")
@@ -544,7 +582,8 @@ class OpenAIClient(LLMClientBase):
             response = await client.responses.create(**request_data)
             
             logger.info(f"[DEBUG] Responses API call successful")
-            return response.model_dump()
+            # Convert to clean OpenAI format (matches official SDK behavior)
+            return self.to_openai_format(response)
             
         except Exception as e:
             logger.error(f"[DEBUG] Responses API call failed: {type(e).__name__}: {str(e)}")
