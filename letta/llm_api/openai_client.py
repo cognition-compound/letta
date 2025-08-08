@@ -243,28 +243,46 @@ class OpenAIClient(LLMClientBase):
                 })
             
             elif message.role == "tool":
-                # Tool result messages
-                content = []
-                if isinstance(message.content, str):
-                    content.append({"type": "input_text", "text": message.content})
-                else:
-                    content.append({"type": "input_text", "text": str(message.content)})
-                
-                tool_message = {
-                    "role": "tool",
-                    "content": content
+                # Tool result messages -> convert to function_call_output format per Responses API
+                tool_result = {
+                    "type": "function_call_output",
+                    "output": message.content[0].text if isinstance(message.content, list) else str(message.content)
                 }
-                # Add tool_call_id if present
+                # Add call_id if present (required for function_call_output)
                 if hasattr(message, 'tool_call_id') and message.tool_call_id:
-                    tool_message["tool_call_id"] = message.tool_call_id
+                    tool_result["call_id"] = message.tool_call_id
                 
-                response_input.append(tool_message)
+                response_input.append(tool_result)
         
         logger.debug(f"[DEBUG] Converted to {len(response_input)} response input items")
         return response_input
 
     def _convert_assistant_message(self, message: PydanticMessage) -> dict:
         """Convert assistant message to Responses API format."""
+        
+        # Check if this assistant message has tool calls
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            # For assistant messages with tool calls, we should include the raw response output
+            # This matches the official example: input_list += response.output
+            # However, since we're converting FROM message history, we need to reconstruct 
+            # the function call format
+            function_call_items = []
+            
+            for tool_call in message.tool_calls:
+                function_call_item = {
+                    "type": "function_call",
+                    "call_id": tool_call.id,
+                    "name": tool_call.function.name, 
+                    "arguments": tool_call.function.arguments
+                }
+                function_call_items.append(function_call_item)
+            
+            # For now, return the first function call item
+            # TODO: Handle multiple tool calls properly
+            if function_call_items:
+                return function_call_items[0]
+        
+        # Regular assistant message without tool calls
         content = []
         
         # Handle content - assistant messages also need content as array
@@ -284,11 +302,6 @@ class OpenAIClient(LLMClientBase):
             "role": "assistant",
             "content": content
         }
-        
-        # Handle tool calls if present
-        if hasattr(message, 'tool_calls') and message.tool_calls:
-            # Tool calls format should be compatible between APIs
-            assistant_message["tool_calls"] = [tc.model_dump() for tc in message.tool_calls]
         
         return assistant_message
 
