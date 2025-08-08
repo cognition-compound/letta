@@ -736,7 +736,7 @@ class OpenAIClient(LLMClientBase):
         """
         kwargs = await self._prepare_client_kwargs_async(llm_config)
         client = AsyncOpenAI(**kwargs)
-        response_stream = await client.responses.create(**request_data, stream=True, stream_options={"include_usage": True})
+        response_stream = await client.responses.create(**request_data, stream=True)
         return response_stream
 
     @trace_method
