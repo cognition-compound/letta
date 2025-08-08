@@ -79,7 +79,7 @@ wait_for_external_postgres
 # Attempt database migration
 log "Attempting database migration..."
 cd /app
-if ! alembic upgrade head; then
+if ! python -m alembic upgrade head; then
     log "ERROR: Database migration failed!"
     log "Please check your database connection and try again."
     if [ -n "$LETTA_PG_HOST" ] && [ -n "$LETTA_PG_PORT" ] && [ -n "$LETTA_PG_USER" ] && [ -n "$LETTA_PG_DB" ]; then
@@ -101,13 +101,6 @@ if [ -n "$LETTA_SANDBOX_MOUNT_PATH" ]; then
     fi
 fi
 
-# Build server command
-CMD="letta server --host $HOST --port $PORT"
-if [ "${SECURE:-false}" = "true" ]; then
-    CMD="$CMD --secure"
-    log "Secure mode enabled"
-fi
-
 # Enhanced signal handling for graceful shutdown with tini
 graceful_shutdown() {
     log "Received shutdown signal, terminating gracefully..."
@@ -118,9 +111,13 @@ graceful_shutdown() {
 trap graceful_shutdown TERM INT
 
 log "Starting Letta Server at http://$HOST:$PORT..."
-log "Server command: $CMD"
 log "Letta version: ${LETTA_VERSION:-unknown}"
 log "Environment: ${LETTA_ENVIRONMENT:-PRODUCTION}"
 
 # Execute the server (tini will handle PID 1 responsibilities)
-exec $CMD
+if [ "${SECURE:-false}" = "true" ]; then
+    log "Secure mode enabled"
+    exec python -c "from letta.main import app; import sys; sys.argv = ['letta', 'server', '--host', '$HOST', '--port', '$PORT', '--secure']; app()"
+else
+    exec python -c "from letta.main import app; import sys; sys.argv = ['letta', 'server', '--host', '$HOST', '--port', '$PORT']; app()"
+fi
