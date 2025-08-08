@@ -98,22 +98,9 @@ ENV LETTA_ENVIRONMENT=${LETTA_ENVIRONMENT} \
 
 WORKDIR /app
 
-# Create virtual environment and install from builder
-COPY --from=builder /build/dist/*.whl /tmp/
-RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
-    python -m venv /app/.venv && \
-    /app/.venv/bin/pip install --prefer-binary /tmp/*.whl && \
-    # Install all optional dependencies since they're not included in the wheel
-    /app/.venv/bin/pip install \
-        pgvector pg8000 psycopg2-binary asyncpg \
-        pytest pytest-asyncio pexpect black pre-commit pyright pytest-order autoflake isort \
-        websockets fastapi uvicorn[standard] python-multipart \
-        docker langchain wikipedia langchain-community locust \
-        uvloop granian redis \
-        e2b-code-interpreter \
-        boto3 google-genai \
-        sqlalchemy[asyncio] alembic && \
-    rm -f /tmp/*.whl
+# Copy the complete virtual environment from builder stage
+# This preserves Poetry's exact dependency resolution and avoids version conflicts
+COPY --from=builder /build/.venv /app/.venv
 
 # Copy application source selectively (avoid copying builder artifacts)
 COPY --from=builder /build/letta ./letta
