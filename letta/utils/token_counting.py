@@ -16,13 +16,10 @@ logger = get_logger(__name__)
 
 def get_encoding_for_model(model: str) -> tiktoken.Encoding:
     """
-    Get the appropriate tiktoken encoding for a model with smart fallbacks.
+    Get the appropriate tiktoken encoding for a model.
     
-    Based on OpenAI model families and tiktoken's encoding patterns:
-    - GPT-5 family: o200k_base (newest models)
-    - GPT-4o, o1/o2/o3/o4 series: o200k_base 
-    - GPT-4, GPT-3.5 series: cl100k_base
-    - Unknown OpenAI models: o200k_base (safe default for new models)
+    Uses tiktoken's built-in model mapping for all known models,
+    with specific workarounds only for models not yet in tiktoken.
     
     Args:
         model: The model name (e.g., "gpt-5-chat-latest", "gpt-4o")
@@ -32,29 +29,19 @@ def get_encoding_for_model(model: str) -> tiktoken.Encoding:
     """
     try:
         # Try tiktoken's built-in model mapping first
+        # This handles all officially supported models automatically
         return tiktoken.encoding_for_model(model)
     except KeyError:
-        # Model not in tiktoken's registry, use smart fallbacks
+        # Model not in tiktoken's registry - only need workarounds for specific cases
         model_lower = model.lower()
         
-        # GPT-5 family (newest) - use o200k_base
+        # GPT-5 family - use o200k_base (same as GPT-4o/o1 series)
         if model_lower.startswith(('gpt-5', 'gpt5')):
-            logger.info(f"Model '{model}' not in tiktoken registry, using o200k_base encoding for GPT-5 family")
+            logger.info(f"GPT-5 model '{model}' not yet in tiktoken, using o200k_base encoding")
             return tiktoken.get_encoding("o200k_base")
         
-        # Other newer model families that should use o200k_base
-        if any(model_lower.startswith(prefix) for prefix in ['gpt-4o', 'o1', 'o2', 'o3', 'o4', 'chatgpt-4o']):
-            logger.info(f"Model '{model}' not in tiktoken registry, using o200k_base encoding for newer model")
-            return tiktoken.get_encoding("o200k_base")
-        
-        # Older GPT-4 and GPT-3.5 families - use cl100k_base
-        if any(model_lower.startswith(prefix) for prefix in ['gpt-4', 'gpt-3.5', 'gpt4', 'gpt3.5']):
-            logger.info(f"Model '{model}' not in tiktoken registry, using cl100k_base encoding for older model")
-            return tiktoken.get_encoding("cl100k_base")
-        
-        # Unknown OpenAI models - assume newest encoding (o200k_base)
-        # This is the safest default for new models going forward
-        logger.warning(f"Unknown model '{model}', falling back to o200k_base encoding (newest OpenAI standard)")
+        # For any other unknown model, let user know we're guessing
+        logger.warning(f"Unknown model '{model}' not in tiktoken registry, falling back to o200k_base")
         return tiktoken.get_encoding("o200k_base")
 
 
