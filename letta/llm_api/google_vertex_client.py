@@ -487,7 +487,7 @@ class GoogleVertexClient(LLMClientBase):
                 "args": {
                     "type": "OBJECT",
                     "properties": tool["parameters"]["properties"],
-                    "required": tool["parameters"]["required"],
+                    "required": tool["parameters"].get("required", []),
                 },
             },
             "propertyOrdering": ["name", "args"],

@@ -264,7 +264,7 @@ def convert_tools_to_cohere_format(tools: List[Tool], inner_thoughts_in_kwargs: 
                     p_name: {
                         "description": p_fields["description"],
                         "type": p_fields["type"],
-                        "required": p_name in tool.function.parameters["required"],
+                        "required": p_name in tool.function.parameters.get("required", []),
                     }
                     for p_name, p_fields in tool.function.parameters["properties"].items()
                 },

@@ -4,6 +4,8 @@
 
 Add `previous_response_id` support to leverage OpenAI's reasoning optimization for GPT-5 and other reasoning models. This provides **5+ point performance improvements** on benchmarks and **significant token savings** by avoiding redundant reasoning in multi-turn conversations, especially critical for function calling workflows.
 
+**✅ FOUNDATION COMPLETE**: Our comprehensive OpenAI Responses API implementation is production-ready with end-to-end tool calling support for GPT-5 and GPT-4o, comprehensive test coverage, and proven architecture. This plan builds on that solid foundation.
+
 ## Problem Statement
 
 ### Current Gap
@@ -13,7 +15,7 @@ Add `previous_response_id` support to leverage OpenAI's reasoning optimization f
 - **Function calling suffers most** since tool calls require round trips where reasoning context is lost
 
 ### Root Cause
-Our **complete Responses API implementation** (migration completed) correctly extracts and processes reasoning content, but doesn't use the `previous_response_id` parameter to maintain reasoning continuity between turns. All infrastructure exists - we just need to add response ID tracking.
+Our **complete Responses API implementation** is fully operational and production-tested with comprehensive tool calling support for both GPT-5 and GPT-4o. However, we don't use the `previous_response_id` parameter to maintain reasoning continuity between turns. All infrastructure exists and is proven working - we just need to add response ID tracking to our existing `to_openai_format()` method and agent conversation flow.
 
 ## Strategic Approach
 
@@ -30,10 +32,11 @@ Our **complete Responses API implementation** (migration completed) correctly ex
 4. **Conversation State**: Integration with Letta's existing conversation management
 
 ### Key Integration Points
-- `OpenAIClient.build_request_data()` - Add `previous_response_id` parameter
-- `OpenAIClient.request()` - Pass response ID to Responses API calls
+- `OpenAIClient.build_request_data()` - Add `previous_response_id` parameter (line 423)
+- `OpenAIClient.request()` - Pass response ID to Responses API calls (line 559) 
+- `OpenAIClient.to_openai_format()` - Extract response ID from clean OpenAI format (line 525)
 - Agent conversation flow - Store and pass response IDs between turns
-- **All API functions already use Responses API** - just need response ID tracking
+- **All API functions already use Responses API with comprehensive tool calling** - proven working infrastructure
 
 ## Implementation Plan
 
@@ -41,92 +44,84 @@ Our **complete Responses API implementation** (migration completed) correctly ex
 **Goal**: Enable `previous_response_id` in existing Responses API infrastructure
 
 #### 1.1 Update `build_request_data()` Method
-**File**: `/letta/llm_api/openai_client.py`
+**File**: `/letta/llm_api/openai_client.py` (line 423)
 
 ```python
+@trace_method
 def build_request_data(
-    self, 
-    messages, 
-    llm_config, 
-    tools=None, 
-    force_tool_call=None, 
-    previous_response_id=None  # New parameter
+    self,
+    messages: List[PydanticMessage],
+    llm_config: LLMConfig,
+    tools: Optional[List[dict]] = None,
+    force_tool_call: Optional[str] = None,
+    previous_response_id: Optional[str] = None  # New parameter
 ) -> dict:
-    # ... existing Responses API logic ...
+    # ... existing Responses API logic (complete implementation) ...
     
     # Add previous_response_id for reasoning models in multi-turn contexts
-    if previous_response_id and self._is_reasoning_model(llm_config.model):
+    if previous_response_id and is_openai_reasoning_model(llm_config.model):
         data["previous_response_id"] = previous_response_id
     
     return data
 ```
 
 #### 1.2 Update Client Request Methods
-**Files**: `/letta/llm_api/openai_client.py`
+**File**: `/letta/llm_api/openai_client.py` (lines 559, 571)
 
 ```python
-def request(
-    self, 
-    request_data: dict, 
-    llm_config: LLMConfig, 
-    previous_response_id: Optional[str] = None  # New parameter
-) -> dict:
-    # Add previous_response_id to request_data if provided
-    if previous_response_id and self._is_reasoning_model(llm_config.model):
-        request_data["previous_response_id"] = previous_response_id
-    
-    # Existing Responses API call - no changes needed
+def request(self, request_data: dict, llm_config: LLMConfig) -> dict:
+    """
+    Performs underlying synchronous request to OpenAI Responses API.
+    Returns response in clean OpenAI SDK format (ready for input reuse).
+    """
+    # request_data already contains previous_response_id if set by build_request_data()
     client = OpenAI(**self._prepare_client_kwargs(llm_config))
     response = client.responses.create(**request_data)
-    return response.model_dump()
-```
-
-#### 1.3 Add Response ID Extraction and Reasoning Model Detection
-**File**: `/letta/llm_api/openai_client.py`
-
-```python
-def _extract_response_id(self, response_data: dict) -> Optional[str]:
-    """Extract response ID from Responses API response for use in subsequent requests."""
-    return response_data.get("id")
-
-def _is_reasoning_model(self, model: str) -> bool:
-    """Check if model supports reasoning optimization."""
-    reasoning_models = ["gpt-5", "o1-preview", "o1-mini", "o3"]
-    return any(reasoning_model in model.lower() for reasoning_model in reasoning_models)
-```
-
-### Phase 2: Update Direct API Functions (Week 1)  
-**Goal**: Add `previous_response_id` support to existing Responses API functions
-
-#### 2.1 Update Direct API Functions
-**File**: `/letta/llm_api/openai.py`
-
-**Note**: All direct API functions already use Responses API after our complete migration. Just need to add `previous_response_id` parameter support.
-
-```python
-def openai_responses_request(
-    url: str,
-    api_key: str, 
-    responses_request: dict,
-    previous_response_id: Optional[str] = None,  # Add parameter
-    fix_url: bool = False,
-) -> dict:
-    # Add previous_response_id to request if provided
-    if previous_response_id and _is_reasoning_model(responses_request.get("model")):
-        responses_request["previous_response_id"] = previous_response_id
     
-    # Existing Responses API implementation
-    response = requests.post(url, headers=headers, json=responses_request)
-    return response.json()
+    # Convert to clean OpenAI format (matches official SDK behavior)
+    return self.to_openai_format(response)
+
+@trace_method  
+async def request_async(self, request_data: dict, llm_config: LLMConfig) -> dict:
+    """Similar update for async version - no signature change needed"""
+    # ... existing implementation with to_openai_format() conversion ...
 ```
 
-#### 2.2 Update Function Signatures
-**File**: `/letta/llm_api/openai.py`
+#### 1.3 Response ID Extraction (Already Available)
+**File**: `/letta/llm_api/openai_client.py` (lines 48, 525)
 
-Update all direct API function signatures to accept `previous_response_id`:
-- `openai_responses_request()`
-- `openai_responses_stream_request()` 
-- Any wrapper functions that call these directly
+```python
+# ALREADY EXISTS: Reasoning model detection (line 48)
+def is_openai_reasoning_model(model: str) -> bool:
+    """Utility function to check if the model is a 'reasoner'"""
+    is_reasoning = model.startswith("o1") or model.startswith("o2") or model.startswith("o3") or model.startswith("o4") or model.startswith("gpt-5")
+    return is_reasoning
+
+# ALREADY EXISTS: Clean response format with ID extraction (line 525)  
+@trace_method
+def to_openai_format(self, response) -> dict:
+    """Convert our internal response format to clean OpenAI SDK format."""
+    response_dict = response.model_dump()  # Contains response ID
+    # ... existing blacklist cleaning implementation ...
+    return response_dict  # response_dict["id"] contains the response ID
+
+# NEW: Simple extraction helper
+def extract_response_id(self, response_data: dict) -> Optional[str]:
+    """Extract response ID from clean OpenAI format response."""
+    return response_data.get("id")
+```
+
+### Phase 2: Simplified - Client-Only Implementation  
+**Goal**: All API calls go through OpenAIClient - no additional functions to update
+
+**Status**: ✅ **COMPLETE** - Our Responses API implementation is entirely through the OpenAIClient class. No separate direct API functions exist that need updating.
+
+**Architecture**: All LLM requests flow through:
+1. `OpenAIClient.build_request_data()` → Constructs request with `previous_response_id`
+2. `OpenAIClient.request()` / `request_async()` → Makes Responses API call  
+3. `OpenAIClient.to_openai_format()` → Returns clean response with response ID
+
+This centralized approach simplifies response ID implementation to just the OpenAIClient class.
 
 ### Phase 3: Agent Integration (Week 2)
 **Goal**: Integrate response ID tracking into agent conversation flow
@@ -209,10 +204,12 @@ class TestReasoningOptimization:
 ## Technical Considerations
 
 ### Implementation Advantages
-- **Complete Responses API Migration**: All infrastructure already exists
-- **Response ID Available**: `response.model_dump()["id"]` contains response ID
+- **Complete Responses API Migration**: All infrastructure exists and is production-tested
+- **Comprehensive Tool Calling**: End-to-end tool calling workflow proven working for GPT-5 and GPT-4o
+- **Response ID Available**: `response.model_dump()["id"]` contains response ID via `to_openai_format()`
 - **No Legacy Code**: No Chat Completions API to maintain or remove
-- **Proven Architecture**: Responses API integration tested and production-ready
+- **Clean Architecture**: Blacklist approach for response field cleaning tested and working
+- **Proven Test Suite**: Comprehensive test coverage including edge cases and multi-model support
 
 ### When to Use Previous Response ID
 ```python
@@ -275,13 +272,20 @@ def should_use_previous_response_id(model: str, conversation_turn: int, has_func
 
 ## Timeline
 
-**Advantages**: Responses API infrastructure already complete from previous migration
+**Advantages**: Complete Responses API infrastructure with comprehensive tool calling already production-tested
 
-- **Week 1**: Core client support + Direct API functions (simplified - just add `previous_response_id` parameter support)
+- **Week 1**: Core client support (simplified - just add `previous_response_id` parameter to existing methods)
 - **Week 2**: Agent integration + Service layer + Testing  
 - **Total**: 2 weeks for complete implementation
 
-**Note**: Implementation is significantly simplified since all Responses API infrastructure already exists.
+**Key Simplifications**:
+- ✅ Responses API migration complete and tested
+- ✅ Tool calling workflow proven for GPT-5 and GPT-4o  
+- ✅ Clean response format with `to_openai_format()` method ready
+- ✅ Comprehensive test suite already exists
+- ✅ No legacy Chat Completions API to maintain
+
+**Implementation is significantly simplified** since all core infrastructure is working and tested.
 
 ## Implementation Priority
 
