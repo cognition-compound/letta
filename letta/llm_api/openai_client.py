@@ -334,7 +334,7 @@ class OpenAIClient(LLMClientBase):
                     "tool_calls": tool_calls if tool_calls else None,  # Add converted tool calls
                     "reasoning_content": self._serialize_reasoning_for_preservation(response_data),
                 },
-                "finish_reason": response_data.get("status", "stop"),  # Map status to finish_reason
+                "finish_reason": "stop" if response_data.get("status") == "completed" else response_data.get("status", "stop"),  # Map status to finish_reason
             }
             choices.append(choice)
 
@@ -348,7 +348,7 @@ class OpenAIClient(LLMClientBase):
                     "tool_calls": tool_calls,
                     "reasoning_content": self._serialize_reasoning_for_preservation(response_data),
                 },
-                "finish_reason": response_data.get("status", "stop"),
+                "finish_reason": "stop" if response_data.get("status") == "completed" else response_data.get("status", "stop"),
             }
             choices.append(choice)
 
@@ -365,7 +365,7 @@ class OpenAIClient(LLMClientBase):
                     "tool_calls": None,
                     "reasoning_content": reasoning_content,
                 },
-                "finish_reason": response_data.get("status", "stop"),
+                "finish_reason": "stop" if response_data.get("status") == "completed" else response_data.get("status", "stop"),
             }
             choices.append(choice)
 

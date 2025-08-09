@@ -835,6 +835,10 @@ def convert_responses_to_chat_completion_format(response_data: dict) -> dict:
     if hasattr(response_data, 'model_dump'):
         response_data = response_data.model_dump()
     
+    # Debug logging
+    logger.info(f"🔍 Converting Responses API to Chat Completion format")
+    logger.info(f"🔍 Input status: {response_data.get('status')}")
+    
     # Extract output items 
     output_items = response_data.get("output", [])
     choices = []
@@ -859,8 +863,11 @@ def convert_responses_to_chat_completion_format(response_data: dict) -> dict:
                     "content": content,
                     "tool_calls": message_data.get("tool_calls"),
                 },
-                "finish_reason": response_data.get("status", "stop")
+                "finish_reason": "stop" if response_data.get("status") == "completed" else response_data.get("status", "stop")
             }
+            
+            # Debug logging
+            logger.info(f"🔍 Mapped finish_reason: {choice['finish_reason']} (from status: {response_data.get('status')})")
             
             # Handle reasoning content for reasoning models
             reasoning_items = response_data.get("reasoning", [])
