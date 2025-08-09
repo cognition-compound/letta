@@ -67,6 +67,46 @@ class Tool(BaseTool):
     last_updated_by_id: Optional[str] = Field(None, description="The id of the user that made this Tool.")
     metadata_: Optional[Dict[str, Any]] = Field(default_factory=dict, description="A dictionary of additional metadata for the tool.")
 
+    def _validate_tool_schema_structure(self) -> None:
+        """Validate that tool schema has proper structure, especially for external tools."""
+        if not self.json_schema:
+            return
+            
+        # Check if schema is wrapped (MCP tools from zod-to-json-schema might be wrapped)
+        if isinstance(self.json_schema, dict) and self.json_schema.get("type") == "function" and "function" in self.json_schema:
+            # Schema is wrapped, extract the inner function
+            logger.warning(f"Tool {self.name} has wrapped schema format, extracting inner function")
+            self.json_schema = self.json_schema["function"]
+        
+        # Validate parameters structure
+        if "parameters" not in self.json_schema:
+            logger.warning(f"Tool {self.name} missing 'parameters' field in json_schema")
+            return
+            
+        parameters = self.json_schema["parameters"]
+        if not isinstance(parameters, dict) or "properties" not in parameters:
+            logger.warning(f"Tool {self.name} has invalid parameters structure")
+            return
+            
+        # Check each property has a 'type' field
+        properties = parameters.get("properties", {})
+        invalid_properties = []
+        for prop_name, prop_schema in properties.items():
+            if not isinstance(prop_schema, dict) or "type" not in prop_schema:
+                invalid_properties.append(prop_name)
+        
+        if invalid_properties:
+            logger.warning(
+                f"Tool {self.name} has properties missing 'type' field: {invalid_properties}. "
+                f"This may cause issues with OpenAI function calling."
+            )
+            # Fix the properties by adding a default type
+            for prop_name in invalid_properties:
+                if isinstance(properties[prop_name], dict):
+                    # Default to string type if missing
+                    properties[prop_name]["type"] = "string"
+                    logger.info(f"Added default 'string' type to property '{prop_name}' in tool {self.name}")
+
     @model_validator(mode="after")
     def refresh_source_code_and_json_schema(self):
         """
@@ -113,6 +153,10 @@ class Tool(BaseTool):
         elif self.tool_type in {ToolType.EXTERNAL_COMPOSIO}:
             # Composio schemas handled separately
             pass
+        elif self.tool_type in {ToolType.EXTERNAL_MCP, ToolType.EXTERNAL_LANGCHAIN}:
+            # For external tools (MCP, LangChain), validate the schema structure
+            if self.json_schema:
+                self._validate_tool_schema_structure()
 
         # At this point, we need to validate that at least json_schema is populated
         if not self.json_schema:
