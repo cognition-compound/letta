@@ -20,7 +20,7 @@ def send_message(self: "Agent", message: str) -> Optional[str]:
     return None
 
 
-def conversation_search(self: "Agent", query: str, page: Optional[int]) -> Optional[str]:
+def conversation_search(self: "Agent", query: str, page: Optional[int] = None) -> Optional[str]:
     """
     Search prior conversation history using case-insensitive string matching.
 
@@ -83,7 +83,7 @@ def archival_memory_insert(self: "Agent", content: str) -> Optional[str]:
     return None
 
 
-def archival_memory_search(self: "Agent", query: str, page: Optional[int], start: Optional[int]) -> Optional[str]:
+def archival_memory_search(self: "Agent", query: str, page: Optional[int] = None, start: Optional[int] = None) -> Optional[str]:
     """
     Search archival memory using semantic (embedding-based) search.
 
@@ -198,7 +198,7 @@ SNIPPET_LINES: int = 4
 
 
 # Based off of: https://github.com/anthropics/anthropic-quickstarts/blob/main/computer-use-demo/computer_use_demo/tools/edit.py?ref=musings.yasyf.com#L154
-def memory_replace(agent_state: "AgentState", label: str, old_str: str, new_str: Optional[str]) -> str:  # type: ignore
+def memory_replace(agent_state: "AgentState", label: str, old_str: str, new_str: Optional[str] = None) -> str:  # type: ignore
     """
     The memory_replace command allows you to replace a specific string in a memory block with a new string. This is used for making precise edits.
 
