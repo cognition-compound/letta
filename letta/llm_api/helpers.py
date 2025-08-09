@@ -99,17 +99,18 @@ def convert_to_structured_output(openai_function: dict, allow_optional: bool = F
 
     try:
         for param, details in openai_function["parameters"]["properties"].items():
-            # Check if this property is compatible with OpenAI structured output format
+            # Handle properties with and without direct 'type' fields
             param_type = details.get("type")
             if not param_type:
-                # Properties with anyOf, oneOf, enum are not compatible with structured output
-                # These should use regular OpenAI function calling instead
+                # Properties with anyOf, oneOf, enum don't have direct 'type' field
+                # but are supported by OpenAI structured output - pass them through
                 if any(key in details for key in ["anyOf", "oneOf", "enum"]):
-                    logger.debug(f"Tool property '{param}' uses {list(details.keys())}, incompatible with structured output")
-                    # Return None to indicate this tool shouldn't use structured output
-                    return None
+                    logger.debug(f"Tool property '{param}' uses advanced JSON Schema, passing through unchanged")
+                    # Add the property as-is to structured output
+                    structured_output["parameters"]["properties"][param] = details.copy()
+                    continue
                 else:
-                    logger.warning(f"Tool property '{param}' missing 'type' field, skipping structured output conversion")
+                    logger.warning(f"Tool property '{param}' missing 'type' field and no advanced schema, skipping")
                     continue
             param_description = details.get("description", "")
 
