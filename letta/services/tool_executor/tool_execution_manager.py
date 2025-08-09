@@ -138,6 +138,26 @@ class ToolExecutionManager:
 
         except Exception as e:
             status = "error"
+            
+            # Add comprehensive error logging for debugging
+            from letta.log.error_context import log_llm_error_with_context
+            log_llm_error_with_context(
+                error=e,
+                request_data={
+                    "function_name": function_name,
+                    "function_args": function_args,
+                    "tool_name": tool.name,
+                    "tool_type": tool.tool_type.value if tool.tool_type else "unknown",
+                    "agent_id": self.agent_state.id if self.agent_state else "unknown"
+                },
+                agent_id=self.agent_state.id if self.agent_state else None,
+                additional_context={
+                    "error_location": "tool_execution_manager",
+                    "step_id": step_id,
+                    "tool_json_schema": tool.json_schema
+                }
+            )
+            
             self.logger.error(f"Error executing tool {function_name}: {str(e)}")
             error_message = get_friendly_error_msg(
                 function_name,
