@@ -58,7 +58,10 @@ class TestResponsesAPIConversion:
         # User message
         assert result[1]["type"] == "message"
         assert result[1]["role"] == "user"
-        assert result[1]["content"] == "Hello, how are you?"
+        # Content is an array with input_text item (API accepts both formats)
+        assert isinstance(result[1]["content"], list)
+        assert result[1]["content"][0]["type"] == "input_text"
+        assert result[1]["content"][0]["text"] == "Hello, how are you?"
 
     def test_convert_messages_to_response_input_multimodal(self):
         """Test converting multimodal messages with text and images."""
@@ -78,7 +81,10 @@ class TestResponsesAPIConversion:
         assert len(result) == 1
         assert result[0]["role"] == "user"
         assert result[0]["type"] == "message"
-        assert result[0]["content"] == "What do you see in this image?"
+        # Content is an array with input_text item
+        assert isinstance(result[0]["content"], list)
+        assert result[0]["content"][0]["type"] == "input_text"
+        assert result[0]["content"][0]["text"] == "What do you see in this image?"
 
     def test_convert_assistant_message_with_tool_calls(self):
         """Test converting assistant message with tool calls."""

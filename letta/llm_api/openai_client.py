@@ -153,7 +153,7 @@ class OpenAIClient(LLMClientBase):
 
         return kwargs
 
-    def _convert_messages_to_response_input(self, messages: List[PydanticMessage]) -> List[dict]:
+    def _convert_messages_to_response_input(self, messages: List) -> List[dict]:
         """Convert internal message format to Responses API input format.
 
         Based on OpenAI Responses API documentation (2025), the input format uses simple content:
@@ -171,7 +171,7 @@ class OpenAIClient(LLMClientBase):
         }
 
         Args:
-            messages: List of PydanticMessage objects
+            messages: List of PydanticMessage objects OR raw API response dicts (for multi-turn)
 
         Returns:
             List of dicts in Responses API input format
@@ -180,6 +180,15 @@ class OpenAIClient(LLMClientBase):
         response_input = []
 
         for i, message in enumerate(messages):
+            # Handle raw dicts from API responses (for multi-turn conversations)
+            if isinstance(message, dict):
+                # These are already in the correct format (e.g., function_call, reasoning, function_call_output)
+                # Per OpenAI pattern: input_list += response.output
+                logger.debug(f"[DEBUG] Message {i} is raw dict with type: {message.get('type')}")
+                response_input.append(message)
+                continue
+            
+            # Handle PydanticMessage objects
             logger.debug(f"[DEBUG] Converting message {i}: role={message.role}, content_type={type(message.content)}")
 
             if message.role == "user":
@@ -191,15 +200,15 @@ class OpenAIClient(LLMClientBase):
                     content = []
                     for item in message.content:
                         if item.type == MessageContentType.text:
-                            content.append({"type": "text", "text": item.text})
+                            content.append({"type": "input_text", "text": item.text})
                         elif item.type == MessageContentType.image:
                             content.append({
-                                "type": "image_url", 
+                                "type": "input_image", 
                                 "image_url": {"url": f"data:{item.source.media_type};base64,{item.source.data}"}
                             })
                         else:
                             # Handle other content types as text fallback
-                            content.append({"type": "text", "text": str(item)})
+                            content.append({"type": "input_text", "text": str(item)})
                     response_input.append({"type": "message", "role": "user", "content": content})
                 else:
                     # Fallback for non-string, non-list content
@@ -509,38 +518,46 @@ class OpenAIClient(LLMClientBase):
             # Responses API uses FLAT tool format (no nesting!)
             converted_tools = []
             for tool in tools:
-                tool_name = tool.get("name", "UNKNOWN_TOOL")
+                # Handle both nested (Chat Completions) and flat formats
+                if tool.get("type") == "function" and "function" in tool:
+                    # Nested format (Chat Completions API) - extract the function
+                    tool_def = tool["function"]
+                else:
+                    # Already flat format or old format
+                    tool_def = tool
+                
+                tool_name = tool_def.get("name", "UNKNOWN_TOOL")
 
                 # Validate tool structure and log issues
-                if "parameters" not in tool:
+                if "parameters" not in tool_def:
                     logger.error(f"Tool '{tool_name}' is missing 'parameters' field. Full tool: {json.dumps(tool, default=str)}")
                     continue
 
-                if not isinstance(tool["parameters"], dict):
+                if not isinstance(tool_def["parameters"], dict):
                     logger.error(
-                        f"Tool '{tool_name}' has invalid 'parameters' type: {type(tool['parameters'])}. Expected dict. Full tool: {json.dumps(tool, default=str)}"
+                        f"Tool '{tool_name}' has invalid 'parameters' type: {type(tool_def['parameters'])}. Expected dict. Full tool: {json.dumps(tool, default=str)}"
                     )
                     continue
 
                 # Check for missing 'required' field and log warning with context
-                if "required" not in tool["parameters"]:
+                if "required" not in tool_def["parameters"]:
                     # Check if this is an MCP tool
-                    tool_description = tool.get("description", "")
+                    tool_description = tool_def.get("description", "")
                     is_mcp_tool = "MCP tool" in tool_description or tool_name.startswith("mcp_")
 
                     logger.warning(
                         f"Tool '{tool_name}' is missing 'required' field in parameters. "
                         f"{'This appears to be an MCP tool. ' if is_mcp_tool else ''}"
-                        f"Adding empty array. Tool parameters: {json.dumps(tool['parameters'], default=str)}"
+                        f"Adding empty array. Tool parameters: {json.dumps(tool_def['parameters'], default=str)}"
                     )
-                    tool["parameters"]["required"] = []
+                    tool_def["parameters"]["required"] = []
 
                 # Create tool in flat format (not nested like Chat Completions API)
                 converted_tool = {
                     "type": "function",
-                    "name": tool["name"],
-                    "description": tool["description"],
-                    "parameters": tool["parameters"].copy(),  # Copy to avoid modifying original
+                    "name": tool_def["name"],
+                    "description": tool_def["description"],
+                    "parameters": tool_def["parameters"].copy(),  # Copy to avoid modifying original
                 }
 
                 # Ensure Responses API strict mode compatibility
@@ -558,11 +575,11 @@ class OpenAIClient(LLMClientBase):
 
                 if supports_structured_output(llm_config):
                     try:
-                        structured_output_version = convert_to_structured_output(tool)
+                        structured_output_version = convert_to_structured_output(tool_def)
                         # Update the tool with structured output
                         converted_tool.update(structured_output_version)
                     except ValueError as e:
-                        logger.warning(f"Failed to convert tool function to structured output, tool={tool}, error={e}")
+                        logger.warning(f"Failed to convert tool function to structured output, tool={tool_def}, error={e}")
 
                 # Final validation: ensure strict mode compatibility
                 converted_tool["strict"] = True
