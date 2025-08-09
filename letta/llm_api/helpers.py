@@ -1,5 +1,6 @@
 import copy
 import json
+import logging
 import warnings
 from collections import OrderedDict
 from typing import Any, List, Union
@@ -12,6 +13,8 @@ from letta.schemas.message import Message
 from letta.schemas.openai.chat_completion_response import ChatCompletionResponse, Choice
 from letta.settings import summarizer_settings
 from letta.utils import count_tokens, printd
+
+logger = logging.getLogger(__name__)
 
 
 def _convert_to_structured_output_helper(property: dict) -> dict:
@@ -82,7 +85,12 @@ def convert_to_structured_output(openai_function: dict, allow_optional: bool = F
     }
 
     for param, details in openai_function["parameters"]["properties"].items():
-        param_type = details["type"]
+        # Some tools might not have a 'type' field (e.g., MCP tools)
+        param_type = details.get("type")
+        if not param_type:
+            # Skip properties without a type field
+            logger.warning(f"Tool property '{param}' missing 'type' field, skipping structured output conversion")
+            continue
         param_description = details.get("description", "")
 
         if param_type == "object":
