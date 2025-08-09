@@ -2,6 +2,24 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: OpenAI Strict Mode Schema Generation (2025-08-09)
+**Fixed critical bug where Optional parameters weren't included in required array** - ALL parameters must be in required array for OpenAI strict mode.
+
+**Problem:**
+- OpenAI strict mode requires ALL parameters in the `required` array
+- Code only added params without defaults AND non-Optional types
+- Caused 400 errors: "Missing 'page' in required array"
+
+**Solution:**
+- Modified `schema_generator.py` line 515-519 to add ALL parameters to required array
+- Optional parameters accept null through their type annotation
+- Added comprehensive test suite in `test_strict_mode_schema_generation.py`
+
+**Research:**
+- Documented professional alternatives in `SCHEMA_GENERATION_MODERNIZATION.md`
+- Current 700-line implementation should be replaced with Pydantic/OpenAI agents library
+- Professional solution would be ~50 lines using proper libraries
+
 ### ✅ FIXED: Parallel Tool Execution Timeout Issue (2025-08-09)
 **Fixed critical design flaw where one hanging tool would kill ALL tools in batch** - Changed from batch timeout to individual tool timeouts.
 
