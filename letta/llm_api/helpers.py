@@ -70,28 +70,42 @@ def convert_to_structured_output(openai_function: dict, allow_optional: bool = F
 
     See: https://platform.openai.com/docs/guides/structured-outputs/supported-schemas
     """
-    description = openai_function.get("description", "")
+    try:
+        description = openai_function.get("description", "")
 
-    structured_output = {
-        "name": openai_function["name"],
-        "description": description,
-        "strict": True,
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-            "required": [],
-        },
-    }
+        structured_output = {
+            "name": openai_function["name"],
+            "description": description,
+            "strict": True,
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+                "required": [],
+            },
+        }
+    except Exception as e:
+        # Add error context for debugging tool schema conversion failures
+        from letta.log.error_context import log_llm_error_with_context
+        log_llm_error_with_context(
+            error=e,
+            request_data={"openai_function": openai_function, "allow_optional": allow_optional},
+            additional_context={
+                "error_location": "convert_to_structured_output_initialization", 
+                "function_name": openai_function.get("name", "unknown")
+            }
+        )
+        raise
 
-    for param, details in openai_function["parameters"]["properties"].items():
-        # Some tools might not have a 'type' field (e.g., MCP tools)
-        param_type = details.get("type")
-        if not param_type:
-            # Skip properties without a type field
-            logger.warning(f"Tool property '{param}' missing 'type' field, skipping structured output conversion")
-            continue
-        param_description = details.get("description", "")
+    try:
+        for param, details in openai_function["parameters"]["properties"].items():
+            # Some tools might not have a 'type' field (e.g., MCP tools)
+            param_type = details.get("type")
+            if not param_type:
+                # Skip properties without a type field
+                logger.warning(f"Tool property '{param}' missing 'type' field, skipping structured output conversion")
+                continue
+            param_description = details.get("description", "")
 
         if param_type == "object":
             if "properties" not in details:
@@ -137,12 +151,25 @@ def convert_to_structured_output(openai_function: dict, allow_optional: bool = F
                 prop["enum"] = details["enum"]
             structured_output["parameters"]["properties"][param] = prop
 
-    if not allow_optional:
-        structured_output["parameters"]["required"] = list(structured_output["parameters"]["properties"].keys())
-    else:
-        raise NotImplementedError("Optional parameter handling is not implemented.")
+        if not allow_optional:
+            structured_output["parameters"]["required"] = list(structured_output["parameters"]["properties"].keys())
+        else:
+            raise NotImplementedError("Optional parameter handling is not implemented.")
 
-    return structured_output
+        return structured_output
+    except Exception as e:
+        # Add error context for debugging tool schema conversion failures
+        from letta.log.error_context import log_llm_error_with_context
+        log_llm_error_with_context(
+            error=e,
+            request_data={"openai_function": openai_function, "allow_optional": allow_optional},
+            additional_context={
+                "error_location": "convert_to_structured_output_main_processing", 
+                "function_name": openai_function.get("name", "unknown"),
+                "failed_param": locals().get("param", "unknown")
+            }
+        )
+        raise
 
 
 def make_post_request(url: str, headers: dict[str, str], data: dict[str, Any]) -> dict[str, Any]:

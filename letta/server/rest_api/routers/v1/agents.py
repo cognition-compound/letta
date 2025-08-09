@@ -1065,6 +1065,9 @@ async def send_message_streaming(
                     ),
                     media_type="text/event-stream",
                 )
+                # Add agent context for error logging
+                result._agent_id = agent_id
+                result._llm_request_data = {}  # Will be populated by LLM client
             else:
                 result = StreamingResponseWithStatusCode(
                     agent_loop.step_stream_no_tokens(
@@ -1076,6 +1079,9 @@ async def send_message_streaming(
                     ),
                     media_type="text/event-stream",
                 )
+                # Add agent context for error logging
+                result._agent_id = agent_id
+                result._llm_request_data = {}  # Will be populated by LLM client
         else:
             result = await server.send_message_to_agent(
                 agent_id=agent_id,

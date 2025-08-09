@@ -167,7 +167,17 @@ class StreamingResponseWithStatusCode(StreamingResponse):
             return
 
         except Exception as exc:
-            logger.exception("Unhandled Streaming Error")
+            # NEW: Add request context to error logs
+            if hasattr(self, '_llm_request_data') and hasattr(self, '_agent_id'):
+                from letta.log.error_context import log_llm_error_with_context
+                log_llm_error_with_context(
+                    error=exc,
+                    request_data=self._llm_request_data,
+                    agent_id=self._agent_id,
+                    additional_context={"error_location": "streaming_response"}
+                )
+            
+            logger.exception("Unhandled Streaming Error")  # Keep existing log
             more_body = False
             error_resp = {"error": {"message": "Internal Server Error"}}
             error_event = f"event: error\ndata: {json.dumps(error_resp)}\n\n".encode(self.charset)

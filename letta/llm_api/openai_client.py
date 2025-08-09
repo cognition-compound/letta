@@ -662,11 +662,26 @@ class OpenAIClient(LLMClientBase):
         Performs underlying synchronous request to OpenAI Responses API.
         Returns response in clean OpenAI SDK format (ready for input reuse).
         """
-        client = OpenAI(**self._prepare_client_kwargs(llm_config))
-        response = client.responses.create(**request_data)
+        try:
+            client = OpenAI(**self._prepare_client_kwargs(llm_config))
+            response = client.responses.create(**request_data)
 
-        # Convert to clean OpenAI format (matches official SDK behavior)
-        return self.to_openai_format(response)
+            # Convert to clean OpenAI format (matches official SDK behavior)
+            return self.to_openai_format(response)
+        except Exception as e:
+            # Add error context for Responses API debugging
+            from letta.log.error_context import log_llm_error_with_context
+            log_llm_error_with_context(
+                error=e,
+                request_data=request_data,
+                additional_context={
+                    "error_location": "openai_client_request_sync",
+                    "model": llm_config.model,
+                    "endpoint": llm_config.model_endpoint,
+                    "api_type": "responses_api"
+                }
+            )
+            raise
 
     @trace_method
     async def request_async(self, request_data: dict, llm_config: LLMConfig) -> dict:
@@ -760,6 +775,20 @@ class OpenAIClient(LLMClientBase):
                     "provider": "openai",
                     "endpoint": llm_config.model_endpoint or "default",
                 },
+            )
+
+            # Add comprehensive error context for debugging
+            from letta.log.error_context import log_llm_error_with_context
+            log_llm_error_with_context(
+                error=e,
+                request_data=request_data,
+                additional_context={
+                    "error_location": "openai_client_request_async",
+                    "model": llm_config.model,
+                    "endpoint": llm_config.model_endpoint,
+                    "api_type": "responses_api",
+                    "stream_mode": False
+                }
             )
 
             logger.error(f"[API_ERROR] Responses API call failed: {type(e).__name__}: {str(e)}")
