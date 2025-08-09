@@ -512,9 +512,11 @@ def generate_schema(function, name: Optional[str] = None, description: Optional[
                 # Add the schema to the function arg key
                 schema["parameters"]["properties"][param.name] = param_generated_schema
 
-        # If the parameter doesn't have a default value, it is required (so we need to add it to the required list)
-        if param.default == inspect.Parameter.empty and not is_optional(param.annotation):
-            schema["parameters"]["required"].append(param.name)
+        # For OpenAI strict mode compatibility, ALL parameters must be in the required array
+        # This includes Optional parameters with defaults - they accept null but are still required
+        # The old logic only added params without defaults and non-Optional types
+        # But strict mode requires ALL params in the required array
+        schema["parameters"]["required"].append(param.name)
 
         # TODO what's going on here?
         # If the parameter is a list of strings we need to hard cast to "string" instead of `str`
