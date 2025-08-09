@@ -76,8 +76,14 @@ class ToolManager:
         """Create a new tool based on the ToolCreate schema."""
         tool_id = await self.get_tool_id_by_name_async(tool_name=pydantic_tool.name, actor=actor)
         if tool_id:
-            # Put to dict and remove fields that should not be reset
-            update_data = pydantic_tool.model_dump(exclude_unset=True, exclude_none=True)
+            # For MCP tools, we need to include all fields to properly update schemas
+            # The exclude_unset=True was filtering out legitimate schema updates
+            if pydantic_tool.tool_type == "external_mcp":
+                # For MCP tools, include all fields to ensure schema updates are applied
+                update_data = pydantic_tool.model_dump(exclude_none=True)
+            else:
+                # For other tools, use the original behavior
+                update_data = pydantic_tool.model_dump(exclude_unset=True, exclude_none=True)
             update_data["organization_id"] = actor.organization_id
 
             # If there's anything to update
@@ -87,6 +93,16 @@ class ToolManager:
                 updated_tool_type = None
                 if "tool_type" in update_data:
                     updated_tool_type = update_data.get("tool_type")
+                
+                # Log MCP tool schema updates
+                if pydantic_tool.tool_type == "external_mcp":
+                    from letta.log import get_logger
+                    logger = get_logger(__name__)
+                    logger.info(f"Updating MCP tool '{pydantic_tool.name}' with schema containing {len(update_data.get('json_schema', {}).get('parameters', {}).get('properties', {}))} properties")
+                    if 'json_schema' in update_data and 'parameters' in update_data['json_schema']:
+                        has_required = 'required' in update_data['json_schema']['parameters']
+                        logger.info(f"MCP tool '{pydantic_tool.name}' schema has 'required' field: {has_required}")
+                
                 tool = await self.update_tool_by_id_async(tool_id, ToolUpdate(**update_data), actor, updated_tool_type=updated_tool_type)
             else:
                 printd(
