@@ -16,7 +16,7 @@ letta = "letta.main:app"
 
 [tool.poetry.dependencies]
 python = "<3.14,>=3.10"
-typer = "^0.15.2"
+typer = "^0.16.0"
 questionary = "^2.0.1"
 pytz = "^2023.3.post1"
 tqdm = "^4.66.1"
@@ -74,6 +74,7 @@ e2b-code-interpreter = {version = "^1.0.3", optional = true}
 anthropic = "^0.58.0"
 letta_client = "^0.1.219"
 openai = "^1.99.3"
+openai-agents = "^0.2.5"
 opentelemetry-api = "1.35.0"
 opentelemetry-sdk = "1.35.0"
 opentelemetry-instrumentation-requests = "0.56b0"
@@ -85,7 +86,7 @@ colorama = "^0.4.6"
 marshmallow-sqlalchemy = "^1.4.1"
 boto3 = {version = "^1.38.23", optional = true}
 datamodel-code-generator = {extras = ["http"], version = "^0.25.0"}
-mcp = {extras = ["cli"], version = "^1.9.4"}
+mcp = {extras = ["cli"], version = "^1.11.0"}
 firecrawl-py = "^2.8.0"
 apscheduler = "^3.11.0"
 aiomultiprocess = "^0.9.1"
