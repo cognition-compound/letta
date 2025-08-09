@@ -95,17 +95,8 @@ class Tool(BaseTool):
             if not isinstance(prop_schema, dict) or "type" not in prop_schema:
                 invalid_properties.append(prop_name)
         
-        if invalid_properties:
-            logger.warning(
-                f"Tool {self.name} has properties missing 'type' field: {invalid_properties}. "
-                f"This may cause issues with OpenAI function calling."
-            )
-            # Fix the properties by adding a default type
-            for prop_name in invalid_properties:
-                if isinstance(properties[prop_name], dict):
-                    # Default to string type if missing
-                    properties[prop_name]["type"] = "string"
-                    logger.info(f"Added default 'string' type to property '{prop_name}' in tool {self.name}")
+        # NOTE: Properties don't always need explicit 'type' fields in JSON schema
+        # This validation was incorrectly requiring them everywhere, corrupting valid schemas
 
     @model_validator(mode="after")
     def refresh_source_code_and_json_schema(self):

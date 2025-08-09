@@ -107,49 +107,49 @@ def convert_to_structured_output(openai_function: dict, allow_optional: bool = F
                 continue
             param_description = details.get("description", "")
 
-        if param_type == "object":
-            if "properties" not in details:
-                raise ValueError(f"Property {param} of type object is missing 'properties'")
-            structured_output["parameters"]["properties"][param] = {
-                "type": "object",
-                "description": param_description,
-                "properties": {k: _convert_to_structured_output_helper(v) for k, v in details["properties"].items()},
-                "additionalProperties": False,
-                "required": list(details["properties"].keys()),
-            }
-
-        elif param_type == "array":
-            items_schema = details.get("items")
-            prefix_items_schema = details.get("prefixItems")
-
-            if prefix_items_schema:
-                # assume fixed-length tuple — safe fallback to use first type for items
-                fallback_item = prefix_items_schema[0] if isinstance(prefix_items_schema, list) else prefix_items_schema
+            if param_type == "object":
+                if "properties" not in details:
+                    raise ValueError(f"Property {param} of type object is missing 'properties'")
                 structured_output["parameters"]["properties"][param] = {
-                    "type": "array",
+                    "type": "object",
                     "description": param_description,
-                    "prefixItems": [_convert_to_structured_output_helper(item) for item in prefix_items_schema],
-                    "items": _convert_to_structured_output_helper(fallback_item),
-                    "minItems": details.get("minItems", len(prefix_items_schema)),
-                    "maxItems": details.get("maxItems", len(prefix_items_schema)),
+                    "properties": {k: _convert_to_structured_output_helper(v) for k, v in details["properties"].items()},
+                    "additionalProperties": False,
+                    "required": list(details["properties"].keys()),
                 }
-            elif items_schema:
-                structured_output["parameters"]["properties"][param] = {
-                    "type": "array",
-                    "description": param_description,
-                    "items": _convert_to_structured_output_helper(items_schema),
-                }
+
+            elif param_type == "array":
+                items_schema = details.get("items")
+                prefix_items_schema = details.get("prefixItems")
+
+                if prefix_items_schema:
+                    # assume fixed-length tuple — safe fallback to use first type for items
+                    fallback_item = prefix_items_schema[0] if isinstance(prefix_items_schema, list) else prefix_items_schema
+                    structured_output["parameters"]["properties"][param] = {
+                        "type": "array",
+                        "description": param_description,
+                        "prefixItems": [_convert_to_structured_output_helper(item) for item in prefix_items_schema],
+                        "items": _convert_to_structured_output_helper(fallback_item),
+                        "minItems": details.get("minItems", len(prefix_items_schema)),
+                        "maxItems": details.get("maxItems", len(prefix_items_schema)),
+                    }
+                elif items_schema:
+                    structured_output["parameters"]["properties"][param] = {
+                        "type": "array",
+                        "description": param_description,
+                        "items": _convert_to_structured_output_helper(items_schema),
+                    }
+                else:
+                    raise ValueError(f"Array param '{param}' is missing both 'items' and 'prefixItems'")
+
             else:
-                raise ValueError(f"Array param '{param}' is missing both 'items' and 'prefixItems'")
-
-        else:
-            prop = {
-                "type": param_type,
-                "description": param_description,
-            }
-            if "enum" in details:
-                prop["enum"] = details["enum"]
-            structured_output["parameters"]["properties"][param] = prop
+                prop = {
+                    "type": param_type,
+                    "description": param_description,
+                }
+                if "enum" in details:
+                    prop["enum"] = details["enum"]
+                structured_output["parameters"]["properties"][param] = prop
 
         if not allow_optional:
             structured_output["parameters"]["required"] = list(structured_output["parameters"]["properties"].keys())
