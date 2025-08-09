@@ -215,23 +215,21 @@ class ToolExecutionManager:
 
         self.logger.info(f"Executing {len(tool_calls)} tools in parallel")
         
-        # Prepare individual tool execution tasks
+        # Prepare individual tool execution tasks with individual timeouts
         tasks = []
         start_time = asyncio.get_event_loop().time()
         
         for tool_call in tool_calls[:config.max_concurrent_tools]:  # Respect concurrency limit
-            task = self._execute_single_tool_call(tool_call, agent_state, config, agent_step_span, step_id)
+            # Wrap each tool execution in its own timeout
+            task = asyncio.wait_for(
+                self._execute_single_tool_call(tool_call, agent_state, config, agent_step_span, step_id),
+                timeout=config.timeout_per_tool_seconds  # Individual timeout per tool
+            )
             tasks.append(task)
 
-        # Execute all tools in parallel with timeout
-        try:
-            results = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=config.timeout_per_tool_seconds * len(tasks),  # Allow extra time for parallel execution
-            )
-        except asyncio.TimeoutError:
-            self.logger.error(f"Parallel tool execution timed out after {config.timeout_per_tool_seconds * len(tasks)} seconds")
-            results = [Exception("Execution timed out") for _ in tasks]
+        # Execute all tools in parallel (each with its own timeout)
+        # return_exceptions=True ensures that if one tool times out, others continue
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Calculate execution time
         end_time = asyncio.get_event_loop().time()
@@ -247,16 +245,22 @@ class ToolExecutionManager:
             tool_call = tool_calls[i]
             
             if isinstance(result, Exception):
-                # Handle exception case
+                # Handle exception case - be specific about timeout vs other errors
+                if isinstance(result, asyncio.TimeoutError):
+                    error_msg = f"Tool '{tool_call.function.name}' timed out after {config.timeout_per_tool_seconds} seconds"
+                    self.logger.warning(error_msg)
+                else:
+                    error_msg = f"Tool execution failed: {str(result)}"
+                    
                 error_result = ParallelToolCallResult(
                     tool_call_id=tool_call.id or f"call_{uuid.uuid4().hex[:8]}",
                     tool_call=tool_call,
                     execution_result=ToolExecutionResult(
                         status="error",
-                        func_return=f"Tool execution failed: {str(result)}",
+                        func_return=error_msg,
                         stderr=[traceback.format_exc()],
                     ),
-                    execution_time_ms=0.0,
+                    execution_time_ms=config.timeout_per_tool_seconds * 1000 if isinstance(result, asyncio.TimeoutError) else 0.0,
                     error=str(result),
                 )
                 parallel_results.append(error_result)

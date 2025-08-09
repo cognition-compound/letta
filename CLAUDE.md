@@ -190,16 +190,6 @@ LETTA_ENABLE_PARALLEL_TOOL_CALLS="true"  # Enable parallel tool execution (defau
 
 ## Common Issues
 
-### Database Connection Pooling
-- **Issue**: Excessive PostgreSQL connections (25+ per agent)
-- **Quick fix**: Set `LETTA_PG_POOL_SIZE=10` and `LETTA_PG_MAX_OVERFLOW=5`
-- **Details**: See `docs/DATABASE_CONNECTION_POOLING_ANALYSIS.md`
-
-### Logging Performance
-- Log files location: `~/.letta/logs/`
-- Check performance: `poetry run python examples/logging_performance_demo.py`
-- Async logging enabled by default for better performance
-
 ### Parallel Tool Execution
 - **Configuration**: Control via `LETTA_ENABLE_PARALLEL_TOOL_CALLS` environment variable
 - **Default**: Enabled (`"true"`) - set to `"false"` to disable
@@ -243,3 +233,8 @@ LETTA_ENABLE_PARALLEL_TOOL_CALLS="true"  # Enable parallel tool execution (defau
 - `letta/schemas/message.py` - Message conversion logic
 - `letta/log/` - Modern logging system
 - `Dockerfile` - Optimized build configuration
+
+## Behaviour Expectations
+- **No backwards compatibility**: We can break things if needed
+- **Reproduce bugs**: When analysing issues, **ALWAYS** reproduce them by creating a (failing) test case in the test suite as very first step.
+- **Document discoveries**: Update @current_progress.md as you learn new things. **ALWAYS** Review and compact existing entries as you learn more about the system.
