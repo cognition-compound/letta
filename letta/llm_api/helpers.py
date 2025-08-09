@@ -99,23 +99,17 @@ def convert_to_structured_output(openai_function: dict, allow_optional: bool = F
 
     try:
         for param, details in openai_function["parameters"]["properties"].items():
-            # Handle JSON Schema constructs like anyOf, oneOf, enum
+            # Check if this property is compatible with OpenAI structured output format
             param_type = details.get("type")
             if not param_type:
-                # Check for anyOf/oneOf/enum patterns
-                if "anyOf" in details:
-                    # Extract the primary type from anyOf (skip null types)
-                    non_null_types = [item.get("type") for item in details["anyOf"] if item.get("type") != "null"]
-                    param_type = non_null_types[0] if non_null_types else "string"
-                elif "oneOf" in details:
-                    # Extract the primary type from oneOf
-                    non_null_types = [item.get("type") for item in details["oneOf"] if item.get("type") != "null"]
-                    param_type = non_null_types[0] if non_null_types else "string"
-                elif "enum" in details:
-                    param_type = "string"  # Enums are typically strings
+                # Properties with anyOf, oneOf, enum are not compatible with structured output
+                # These should use regular OpenAI function calling instead
+                if any(key in details for key in ["anyOf", "oneOf", "enum"]):
+                    logger.debug(f"Tool property '{param}' uses {list(details.keys())}, incompatible with structured output")
+                    # Return None to indicate this tool shouldn't use structured output
+                    return None
                 else:
-                    # Skip properties we can't determine the type for
-                    logger.warning(f"Tool property '{param}' has no determinable type, skipping structured output conversion")
+                    logger.warning(f"Tool property '{param}' missing 'type' field, skipping structured output conversion")
                     continue
             param_description = details.get("description", "")
 
