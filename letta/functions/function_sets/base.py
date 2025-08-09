@@ -20,13 +20,13 @@ def send_message(self: "Agent", message: str) -> Optional[str]:
     return None
 
 
-def conversation_search(self: "Agent", query: str, page: Optional[int] = 0) -> Optional[str]:
+def conversation_search(self: "Agent", query: str, page: Optional[int]) -> Optional[str]:
     """
     Search prior conversation history using case-insensitive string matching.
 
     Args:
         query (str): String to search for.
-        page (int): Allows you to page through results. Only use on a follow-up query. Defaults to 0 (first page).
+        page (Optional[int]): Allows you to page through results. Only use on a follow-up query. Pass null for first page (default: 0).
 
     Returns:
         str: Query result string
@@ -83,14 +83,14 @@ def archival_memory_insert(self: "Agent", content: str) -> Optional[str]:
     return None
 
 
-def archival_memory_search(self: "Agent", query: str, page: Optional[int] = 0, start: Optional[int] = 0) -> Optional[str]:
+def archival_memory_search(self: "Agent", query: str, page: Optional[int], start: Optional[int]) -> Optional[str]:
     """
     Search archival memory using semantic (embedding-based) search.
 
     Args:
         query (str): String to search for.
-        page (Optional[int]): Allows you to page through results. Only use on a follow-up query. Defaults to 0 (first page).
-        start (Optional[int]): Starting index for the search results. Defaults to 0.
+        page (Optional[int]): Allows you to page through results. Only use on a follow-up query. Pass null for first page (default: 0).
+        start (Optional[int]): Starting index for the search results. Pass null for beginning (default: 0).
 
     Returns:
         str: Query result string
@@ -100,10 +100,16 @@ def archival_memory_search(self: "Agent", query: str, page: Optional[int] = 0, s
 
     if page is None or (isinstance(page, str) and page.lower().strip() == "none"):
         page = 0
+    if start is None or (isinstance(start, str) and start.lower().strip() == "none"):
+        start = 0
     try:
         page = int(page)
     except:
         raise ValueError("'page' argument must be an integer")
+    try:
+        start = int(start)
+    except:
+        raise ValueError("'start' argument must be an integer")
     count = RETRIEVAL_QUERY_DEFAULT_PAGE_SIZE
 
     try:
@@ -192,14 +198,14 @@ SNIPPET_LINES: int = 4
 
 
 # Based off of: https://github.com/anthropics/anthropic-quickstarts/blob/main/computer-use-demo/computer_use_demo/tools/edit.py?ref=musings.yasyf.com#L154
-def memory_replace(agent_state: "AgentState", label: str, old_str: str, new_str: Optional[str] = None) -> str:  # type: ignore
+def memory_replace(agent_state: "AgentState", label: str, old_str: str, new_str: Optional[str]) -> str:  # type: ignore
     """
     The memory_replace command allows you to replace a specific string in a memory block with a new string. This is used for making precise edits.
 
     Args:
         label (str): Section of the memory to be edited, identified by its label.
         old_str (str): The text to replace (must match exactly, including whitespace and indentation).
-        new_str (Optional[str]): The new text to insert in place of the old text. Omit this argument to delete the old_str.
+        new_str (Optional[str]): The new text to insert in place of the old text. Pass null to delete the old_str.
 
     Returns:
         str: The success message
@@ -214,13 +220,13 @@ def memory_replace(agent_state: "AgentState", label: str, old_str: str, new_str:
         raise ValueError(
             "old_str contains a line number warning, which is not allowed. Do not include line number information when calling memory tools (line numbers are for display purposes only)."
         )
-    if bool(re.search(r"\nLine \d+: ", new_str)):
+    if new_str is not None and bool(re.search(r"\nLine \d+: ", new_str)):
         raise ValueError(
             "new_str contains a line number prefix, which is not allowed. Do not include line numbers when calling memory tools (line numbers are for display purposes only)."
         )
 
     old_str = str(old_str).expandtabs()
-    new_str = str(new_str).expandtabs()
+    new_str = "" if new_str is None else str(new_str).expandtabs()
     current_value = str(agent_state.memory.get_block(label).value).expandtabs()
 
     # Check if old_str is unique in the block
