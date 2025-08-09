@@ -2,6 +2,22 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: Parallel Tool Execution Timeout Issue (2025-08-09)
+**Fixed critical design flaw where one hanging tool would kill ALL tools in batch** - Changed from batch timeout to individual tool timeouts.
+
+**Problem:** 
+- Parallel execution used total timeout = `timeout_per_tool * num_tools` (e.g. 15s × 10 = 150s)
+- If ANY tool hung, ALL tools failed after 150 seconds
+- This blocked inter-agent communication (`send` tool) when external tools (perplexity, outlook) timed out
+
+**Solution:**
+- Each tool now has its own individual timeout via `asyncio.wait_for`
+- Tools that complete return their results
+- Tools that timeout fail individually without affecting others
+- Clear timeout error messages per tool
+
+**Impact:** Inter-agent communication now resilient to external tool failures
+
 ### 🚫 CONFIRMED: Upstream 0.9.1+ Analysis - DO NOT MERGE (2025-07-30)
 **Comprehensive analysis of latest upstream changes confirms BREAKING incompatibility** - Upstream has removed core custom features and made incompatible architectural changes.
 
