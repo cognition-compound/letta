@@ -11,6 +11,9 @@ from letta.constants import LETTA_MODEL_ENDPOINT
 from letta.errors import ErrorCode, LLMAuthenticationError, LLMError
 from letta.helpers.datetime_helpers import timestamp_to_datetime
 from letta.llm_api.helpers import add_inner_thoughts_to_functions, convert_to_structured_output, make_post_request
+from letta.log import get_logger
+
+logger = get_logger(__name__)
 from letta.llm_api.openai_client import (
     accepts_developer_role,
     requires_auto_tool_choice,
@@ -690,6 +693,18 @@ def convert_chat_completion_to_responses_format(chat_completion_request: ChatCom
     
     # Handle tools (format should be compatible)
     if "tools" in data and data["tools"] is not None:
+        # Log tool processing for debugging
+        for idx, tool in enumerate(data["tools"]):
+            tool_name = tool.get("name", tool.get("function", {}).get("name", f"UNKNOWN_TOOL_{idx}"))
+            if isinstance(tool, dict):
+                # Check for proper structure
+                if "function" in tool:
+                    func = tool["function"]
+                    if "parameters" in func and "required" not in func["parameters"]:
+                        logger.warning(f"Tool '{tool_name}' missing 'required' field in parameters during conversion to Responses API")
+                elif "parameters" in tool and "required" not in tool["parameters"]:
+                    logger.warning(f"Tool '{tool_name}' missing 'required' field in parameters during conversion to Responses API")
+        
         responses_data["tools"] = data["tools"]
         
         # Handle tool choice

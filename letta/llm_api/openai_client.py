@@ -504,6 +504,30 @@ class OpenAIClient(LLMClientBase):
             # Responses API uses FLAT tool format (no nesting!)
             converted_tools = []
             for tool in tools:
+                tool_name = tool.get("name", "UNKNOWN_TOOL")
+                
+                # Validate tool structure and log issues
+                if "parameters" not in tool:
+                    logger.error(f"Tool '{tool_name}' is missing 'parameters' field. Full tool: {json.dumps(tool, default=str)}")
+                    continue
+                    
+                if not isinstance(tool["parameters"], dict):
+                    logger.error(f"Tool '{tool_name}' has invalid 'parameters' type: {type(tool['parameters'])}. Expected dict. Full tool: {json.dumps(tool, default=str)}")
+                    continue
+                
+                # Check for missing 'required' field and log warning with context
+                if "required" not in tool["parameters"]:
+                    # Check if this is an MCP tool
+                    tool_description = tool.get("description", "")
+                    is_mcp_tool = "MCP tool" in tool_description or tool_name.startswith("mcp_")
+                    
+                    logger.warning(
+                        f"Tool '{tool_name}' is missing 'required' field in parameters. "
+                        f"{'This appears to be an MCP tool. ' if is_mcp_tool else ''}"
+                        f"Adding empty array. Tool parameters: {json.dumps(tool['parameters'], default=str)}"
+                    )
+                    tool["parameters"]["required"] = []
+                
                 # Create tool in flat format (not nested like Chat Completions API)
                 converted_tool = {
                     "type": "function",
@@ -520,6 +544,9 @@ class OpenAIClient(LLMClientBase):
                     # Ensure all properties are required (strict mode requirement)
                     properties = converted_tool["parameters"].get("properties", {})
                     if properties:
+                        # Check if required field exists, if not create it
+                        if "required" not in converted_tool["parameters"]:
+                            logger.info(f"Tool '{tool_name}' creating 'required' field with all properties as required for strict mode")
                         converted_tool["parameters"]["required"] = list(properties.keys())
 
                 if supports_structured_output(llm_config):
