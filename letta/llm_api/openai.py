@@ -621,34 +621,39 @@ def convert_chat_completion_to_responses_format(chat_completion_request: ChatCom
     
     for message in messages:
         if message["role"] == "user":
-            content = []
             if isinstance(message.get("content"), str):
-                content.append({"type": "input_text", "text": message["content"]})
+                response_input.append({
+                    "type": "message",
+                    "role": "user",
+                    "content": message["content"]
+                })
             elif isinstance(message.get("content"), list):
+                content = []
                 for item in message["content"]:
                     if item.get("type") == "text":
-                        content.append({"type": "input_text", "text": item.get("text", "")})
+                        content.append({"type": "text", "text": item.get("text", "")})
                     elif item.get("type") == "image_url":
-                        content.append({"type": "input_image", "image_url": item.get("image_url", {})})
+                        content.append({"type": "image_url", "image_url": item.get("image_url", {})})
                     else:
                         # Fallback for other content types
-                        content.append({"type": "input_text", "text": str(item)})
+                        content.append({"type": "text", "text": str(item)})
+                response_input.append({
+                    "type": "message",
+                    "role": "user",
+                    "content": content
+                })
             else:
-                content.append({"type": "input_text", "text": str(message.get("content", ""))})
-            
-            response_input.append({
-                "role": "user",
-                "content": content
-            })
+                response_input.append({
+                    "type": "message",
+                    "role": "user",
+                    "content": str(message.get("content", ""))
+                })
             
         elif message["role"] == "assistant":
-            content = []
-            if message.get("content"):
-                content.append({"type": "input_text", "text": message["content"]})
-            
             assistant_message = {
+                "type": "message",
                 "role": "assistant",
-                "content": content
+                "content": message.get("content", "")
             }
             
             # Handle tool calls if present
@@ -659,20 +664,23 @@ def convert_chat_completion_to_responses_format(chat_completion_request: ChatCom
             
         elif message["role"] == "system":
             response_input.append({
+                "type": "message",
                 "role": "system",
-                "content": [{"type": "input_text", "text": message.get("content", "")}]
+                "content": message.get("content", "")
             })
             
         elif message["role"] == "developer":
             response_input.append({
+                "type": "message",
                 "role": "developer", 
-                "content": [{"type": "input_text", "text": message.get("content", "")}]
+                "content": message.get("content", "")
             })
             
         elif message["role"] == "tool":
             tool_message = {
+                "type": "message",
                 "role": "tool",
-                "content": [{"type": "input_text", "text": message.get("content", "")}]
+                "content": message.get("content", "")
             }
             if message.get("tool_call_id"):
                 tool_message["tool_call_id"] = message["tool_call_id"]
@@ -853,7 +861,7 @@ def convert_responses_to_chat_completion_format(response_data: dict) -> dict:
             for content_item in content_items:
                 if content_item.get("type") == "text":
                     content += content_item.get("text", "")
-                elif content_item.get("type") == "input_text":
+                elif content_item.get("type") == "output_text":
                     content += content_item.get("text", "")
             
             choice = {

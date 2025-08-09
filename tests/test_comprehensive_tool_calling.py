@@ -83,8 +83,9 @@ class ToolCallingTestSuite:
         
         # Start with original user message
         input_list = [{
+            "type": "message",
             "role": "user",
-            "content": [{"type": "input_text", "text": user_message}]
+            "content": user_message
         }]
         
         # Use official OpenAI pattern: input_list += response.output

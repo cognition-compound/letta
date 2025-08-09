@@ -58,8 +58,9 @@ def test_gpt4o_responses_api_basic_call():
     assert "max_output_tokens" in request_data  # Responses API parameter
     assert request_data["model"] == "gpt-4o"
     assert len(request_data["input"]) == 1
+    assert request_data["input"][0]["type"] == "message"
     assert request_data["input"][0]["role"] == "user"
-    assert request_data["input"][0]["content"][0]["type"] == "input_text"
+    assert isinstance(request_data["input"][0]["content"], str)
     
     # Make actual API call
     response_data = client.request(request_data, llm_config)

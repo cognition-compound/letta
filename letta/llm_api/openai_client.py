@@ -156,11 +156,17 @@ class OpenAIClient(LLMClientBase):
     def _convert_messages_to_response_input(self, messages: List[PydanticMessage]) -> List[dict]:
         """Convert internal message format to Responses API input format.
 
-        Based on OpenAI Responses API documentation, the input format is:
+        Based on OpenAI Responses API documentation (2025), the input format uses simple content:
         {
             "role": "user",
+            "content": "Hello"
+        }
+        or for multimodal:
+        {
+            "role": "user", 
             "content": [
-                {"type": "input_text", "text": "Hello"}
+                {"type": "text", "text": "Hello"},
+                {"type": "image_url", "image_url": {...}}
             ]
         }
 
@@ -177,27 +183,27 @@ class OpenAIClient(LLMClientBase):
             logger.debug(f"[DEBUG] Converting message {i}: role={message.role}, content_type={type(message.content)}")
 
             if message.role == "user":
-                content = []
                 if isinstance(message.content, str):
                     # Simple string content
-                    content.append({"type": "input_text", "text": message.content})
+                    response_input.append({"type": "message", "role": "user", "content": message.content})
                 elif isinstance(message.content, list):
                     # Multi-modal content (text + images)
+                    content = []
                     for item in message.content:
                         if item.type == MessageContentType.text:
-                            content.append({"type": "input_text", "text": item.text})
+                            content.append({"type": "text", "text": item.text})
                         elif item.type == MessageContentType.image:
-                            content.append(
-                                {"type": "input_image", "image_url": {"url": f"data:{item.source.media_type};base64,{item.source.data}"}}
-                            )
+                            content.append({
+                                "type": "image_url", 
+                                "image_url": {"url": f"data:{item.source.media_type};base64,{item.source.data}"}
+                            })
                         else:
                             # Handle other content types as text fallback
-                            content.append({"type": "input_text", "text": str(item)})
+                            content.append({"type": "text", "text": str(item)})
+                    response_input.append({"type": "message", "role": "user", "content": content})
                 else:
                     # Fallback for non-string, non-list content
-                    content.append({"type": "input_text", "text": str(message.content)})
-
-                response_input.append({"role": "user", "content": content})
+                    response_input.append({"type": "message", "role": "user", "content": str(message.content)})
 
             elif message.role == "assistant":
                 # Handle assistant messages with potential tool calls
@@ -205,29 +211,26 @@ class OpenAIClient(LLMClientBase):
 
             elif message.role == "system":
                 # System messages in Responses API
-                content = []
                 if isinstance(message.content, str):
-                    content.append({"type": "input_text", "text": message.content})
+                    response_input.append({"type": "message", "role": "system", "content": message.content})
                 elif isinstance(message.content, list):
+                    # Handle list content by extracting text
+                    content_text = ""
                     for item in message.content:
                         if hasattr(item, "text"):
-                            content.append({"type": "input_text", "text": item.text})
+                            content_text += item.text
                         else:
-                            content.append({"type": "input_text", "text": str(item)})
+                            content_text += str(item)
+                    response_input.append({"type": "message", "role": "system", "content": content_text})
                 else:
-                    content.append({"type": "input_text", "text": str(message.content)})
-
-                response_input.append({"role": "system", "content": content})
+                    response_input.append({"type": "message", "role": "system", "content": str(message.content)})
 
             elif message.role == "developer":
                 # Developer role messages (if supported by model)
-                content = []
                 if isinstance(message.content, str):
-                    content.append({"type": "input_text", "text": message.content})
+                    response_input.append({"type": "message", "role": "developer", "content": message.content})
                 else:
-                    content.append({"type": "input_text", "text": str(message.content)})
-
-                response_input.append({"role": "developer", "content": content})
+                    response_input.append({"type": "message", "role": "developer", "content": str(message.content)})
 
             elif message.role == "tool":
                 # Tool result messages -> convert to function_call_output format per Responses API
@@ -272,20 +275,25 @@ class OpenAIClient(LLMClientBase):
         # Regular assistant message without tool calls
         content = []
 
-        # Handle content - assistant messages also need content as array
+        # Handle content - assistant messages use simple content format
         if isinstance(message.content, str):
             if message.content:  # Only add non-empty content
-                content.append({"type": "input_text", "text": message.content})
+                assistant_message = {"type": "message", "role": "assistant", "content": message.content}
+            else:
+                assistant_message = {"type": "message", "role": "assistant", "content": ""}
         elif isinstance(message.content, list):
+            # Extract text from list content
+            content_text = ""
             for item in message.content:
                 if hasattr(item, "text") and item.text:
-                    content.append({"type": "input_text", "text": item.text})
+                    content_text += item.text
                 elif hasattr(item, "type") and item.type == MessageContentType.text and hasattr(item, "text"):
-                    content.append({"type": "input_text", "text": item.text})
+                    content_text += item.text
+            assistant_message = {"type": "message", "role": "assistant", "content": content_text}
         elif message.content:  # Handle other non-empty content types
-            content.append({"type": "input_text", "text": str(message.content)})
-
-        assistant_message = {"role": "assistant", "content": content}
+            assistant_message = {"type": "message", "role": "assistant", "content": str(message.content)}
+        else:
+            assistant_message = {"type": "message", "role": "assistant", "content": ""}
 
         return assistant_message
 
