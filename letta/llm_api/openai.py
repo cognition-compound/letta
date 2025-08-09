@@ -748,7 +748,7 @@ def convert_response_stream_chunk_to_chat_completion_format(chunk_data: dict) ->
         "id": chunk_data.get("id", "chatcmpl-temp"),
         "object": "chat.completion.chunk",
         "created": chunk_data.get("created", 0),
-        "model": chunk_data.get("model"),
+        "model": chunk_data.get("model", "gpt-4o-mini"),
         "system_fingerprint": chunk_data.get("system_fingerprint"),
         "choices": []
     }

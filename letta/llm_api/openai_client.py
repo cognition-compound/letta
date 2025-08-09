@@ -315,14 +315,11 @@ class OpenAIClient(LLMClientBase):
             tool_call = {
                 "id": func_call.get("call_id", f"call_{len(tool_calls)}"),
                 "type": "function",
-                "function": {
-                    "name": func_call.get("name", ""),
-                    "arguments": func_call.get("arguments", "{}")
-                }
+                "function": {"name": func_call.get("name", ""), "arguments": func_call.get("arguments", "{}")},
             }
             tool_calls.append(tool_call)
 
-        # Process message items (standard responses) 
+        # Process message items (standard responses)
         for i, item in enumerate(message_items):
             content = self._convert_response_content(item.get("content", []))
 
@@ -334,7 +331,9 @@ class OpenAIClient(LLMClientBase):
                     "tool_calls": tool_calls if tool_calls else None,  # Add converted tool calls
                     "reasoning_content": self._serialize_reasoning_for_preservation(response_data),
                 },
-                "finish_reason": "stop" if response_data.get("status") == "completed" else response_data.get("status", "stop"),  # Map status to finish_reason
+                "finish_reason": (
+                    "stop" if response_data.get("status") == "completed" else response_data.get("status", "stop")
+                ),  # Map status to finish_reason
             }
             choices.append(choice)
 
@@ -343,7 +342,7 @@ class OpenAIClient(LLMClientBase):
             choice = {
                 "index": 0,
                 "message": {
-                    "role": "assistant", 
+                    "role": "assistant",
                     "content": None,  # No text content, only tool calls
                     "tool_calls": tool_calls,
                     "reasoning_content": self._serialize_reasoning_for_preservation(response_data),
@@ -404,13 +403,13 @@ class OpenAIClient(LLMClientBase):
 
     def _serialize_reasoning_for_preservation(self, response_data: dict) -> Optional[str]:
         """Serialize the entire reasoning field from OpenAI for exact preservation.
-        
+
         This ensures we can reconstruct the EXACT reasoning object when converting
         back to OpenAI format, maintaining perfect round-trip fidelity.
-        
+
         Args:
             response_data: Raw response data from Responses API
-            
+
         Returns:
             JSON-serialized reasoning object if present, None otherwise.
         """
@@ -418,42 +417,40 @@ class OpenAIClient(LLMClientBase):
         top_level_reasoning = response_data.get("reasoning")
         if top_level_reasoning is not None:  # Handle empty dict {} as valid
             try:
-                return json.dumps(top_level_reasoning, ensure_ascii=False, separators=(',', ':'))
+                return json.dumps(top_level_reasoning, ensure_ascii=False, separators=(",", ":"))
             except (TypeError, ValueError) as e:
                 logger.warning(f"Failed to JSON serialize top-level reasoning: {e}")
-                
+
         # Also check for reasoning items in output (future OpenAI format possibility)
         output_items = response_data.get("output", [])
         reasoning_items = []
-        
+
         for item in output_items:
             if item.get("type") == "reasoning":
                 reasoning_items.append(item)
-                
+
         if reasoning_items:
             try:
                 # Store all reasoning items
-                reasoning_data = {
-                    "output_reasoning_items": reasoning_items
-                }
-                return json.dumps(reasoning_data, ensure_ascii=False, separators=(',', ':'))
+                reasoning_data = {"output_reasoning_items": reasoning_items}
+                return json.dumps(reasoning_data, ensure_ascii=False, separators=(",", ":"))
             except (TypeError, ValueError) as e:
                 logger.warning(f"Failed to JSON serialize reasoning items: {e}")
-                
+
         return None
 
     def _process_reasoning_content(self, chat_completion_response: ChatCompletionResponse, response_data: dict):
         """Process reasoning content for reasoning models.
-        
+
         This method:
         1. Serializes the entire reasoning object for exact preservation
         2. Sets omitted flag when reasoning is present but not readable
         """
         if not chat_completion_response.choices:
             return
-            
+
         message = chat_completion_response.choices[0].message
-        
+
         # Always serialize the complete reasoning object for preservation
         serialized_reasoning = self._serialize_reasoning_for_preservation(response_data)
         if serialized_reasoning:
@@ -505,29 +502,31 @@ class OpenAIClient(LLMClientBase):
             converted_tools = []
             for tool in tools:
                 tool_name = tool.get("name", "UNKNOWN_TOOL")
-                
+
                 # Validate tool structure and log issues
                 if "parameters" not in tool:
                     logger.error(f"Tool '{tool_name}' is missing 'parameters' field. Full tool: {json.dumps(tool, default=str)}")
                     continue
-                    
+
                 if not isinstance(tool["parameters"], dict):
-                    logger.error(f"Tool '{tool_name}' has invalid 'parameters' type: {type(tool['parameters'])}. Expected dict. Full tool: {json.dumps(tool, default=str)}")
+                    logger.error(
+                        f"Tool '{tool_name}' has invalid 'parameters' type: {type(tool['parameters'])}. Expected dict. Full tool: {json.dumps(tool, default=str)}"
+                    )
                     continue
-                
+
                 # Check for missing 'required' field and log warning with context
                 if "required" not in tool["parameters"]:
                     # Check if this is an MCP tool
                     tool_description = tool.get("description", "")
                     is_mcp_tool = "MCP tool" in tool_description or tool_name.startswith("mcp_")
-                    
+
                     logger.warning(
                         f"Tool '{tool_name}' is missing 'required' field in parameters. "
                         f"{'This appears to be an MCP tool. ' if is_mcp_tool else ''}"
                         f"Adding empty array. Tool parameters: {json.dumps(tool['parameters'], default=str)}"
                     )
                     tool["parameters"]["required"] = []
-                
+
                 # Create tool in flat format (not nested like Chat Completions API)
                 converted_tool = {
                     "type": "function",
@@ -589,9 +588,7 @@ class OpenAIClient(LLMClientBase):
 
         # Configure reasoning parameters for reasoning models
         if is_openai_reasoning_model(model):
-            data["reasoning"] = {
-                "effort": "low"  # Use low effort for faster responses
-            }
+            data["reasoning"] = {"effort": "low"}  # Use low effort for faster responses
             # Note: reasoning.content is not available via API - only reasoning.encrypted_content
             # OpenAI intentionally does not expose actual reasoning thoughts
 
@@ -717,9 +714,7 @@ class OpenAIClient(LLMClientBase):
                         )
                         break
                     elif item.get("type") == "function_call":
-                        logger.debug(
-                            f"[API_RESPONSE] First function call: name='{item.get('name')}', args='{item.get('arguments')}'"
-                        )
+                        logger.debug(f"[API_RESPONSE] First function call: name='{item.get('name')}', args='{item.get('arguments')}'")
                         break
             else:
                 logger.warning(f"[API_RESPONSE] No tool calls returned despite tools provided!")
@@ -728,18 +723,20 @@ class OpenAIClient(LLMClientBase):
 
         except Exception as e:
             # Log structured error event for non-streaming requests
-            log_event("llm_request_error", {
-                "model": request_data.get("model", "unknown"),
-                "tool_count": len(request_data.get("tools", [])),
-                "api_type": "responses",
-                "stream_mode": False,
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "provider": "openai",
-                "endpoint": llm_config.model_endpoint or "default"
-            })
-            
-            
+            log_event(
+                "llm_request_error",
+                {
+                    "model": request_data.get("model", "unknown"),
+                    "tool_count": len(request_data.get("tools", [])),
+                    "api_type": "responses",
+                    "stream_mode": False,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "provider": "openai",
+                    "endpoint": llm_config.model_endpoint or "default",
+                },
+            )
+
             logger.error(f"[API_ERROR] Responses API call failed: {type(e).__name__}: {str(e)}")
             logger.error(f"[API_ERROR] Request model: {request_data.get('model')}, tools: {len(request_data.get('tools', []))}")
             logger.debug(f"[API_ERROR] Full request data: {json.dumps(request_data, indent=2, default=str)}")
@@ -762,7 +759,6 @@ class OpenAIClient(LLMClientBase):
         chat_completion_response = ChatCompletionResponse(**converted_response)
         chat_completion_response = self._fix_truncated_json_response(chat_completion_response)
 
-
         # Handle reasoning content for reasoning models
         if is_openai_reasoning_model(llm_config.model):
             self._process_reasoning_content(chat_completion_response, response_data)
@@ -776,49 +772,75 @@ class OpenAIClient(LLMClientBase):
         """
         model = request_data.get("model", "unknown")
         tool_count = len(request_data.get("tools", []))
-        
+
         # Log structured request start event
-        log_event("llm_stream_request_start", {
-            "model": model,
-            "tool_count": tool_count,
-            "api_type": "responses",
-            "stream_mode": True,
-            "provider": "openai",
-            "endpoint": llm_config.model_endpoint or "default",
-            "temperature": request_data.get("temperature"),
-            "max_output_tokens": request_data.get("max_output_tokens")
-        })
-        
-        try:
-            kwargs = await self._prepare_client_kwargs_async(llm_config)
-            client = AsyncOpenAI(**kwargs)
-            
-            
-            response_stream = await client.responses.create(**request_data, stream=True)
-            
-            # Log successful stream initiation
-            log_event("llm_stream_request_success", {
-                "model": model,
-                "tool_count": tool_count,
-                "api_type": "responses"
-            })
-            
-            return response_stream
-            
-        except Exception as e:
-            # Log structured error event
-            log_event("llm_stream_request_error", {
+        log_event(
+            "llm_stream_request_start",
+            {
                 "model": model,
                 "tool_count": tool_count,
                 "api_type": "responses",
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "base_url": kwargs.get('base_url', 'default'),
-                "provider": "openai"
-            })
-            
-            
+                "stream_mode": True,
+                "provider": "openai",
+                "endpoint": llm_config.model_endpoint or "default",
+                "temperature": request_data.get("temperature"),
+                "max_output_tokens": request_data.get("max_output_tokens"),
+            },
+        )
+
+        try:
+            kwargs = await self._prepare_client_kwargs_async(llm_config)
+            client = AsyncOpenAI(**kwargs)
+
+            response_stream = await client.responses.create(**request_data, stream=True)
+
+            # Log successful stream initiation
+            log_event("llm_stream_request_success", {"model": model, "tool_count": tool_count, "api_type": "responses"})
+
+            # Convert Responses API stream to Chat Completions format for compatibility
+            return self._convert_responses_stream_to_chat_completions(response_stream)
+
+        except Exception as e:
+            # Log structured error event
+            log_event(
+                "llm_stream_request_error",
+                {
+                    "model": model,
+                    "tool_count": tool_count,
+                    "api_type": "responses",
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "base_url": kwargs.get("base_url", "default"),
+                    "provider": "openai",
+                },
+            )
+
             raise
+
+    async def _convert_responses_stream_to_chat_completions(self, response_stream: AsyncStream) -> AsyncStream[ChatCompletionChunk]:
+        """
+        Convert Responses API stream to Chat Completions format for compatibility with streaming interfaces.
+        """
+        async for chunk in response_stream:
+            try:
+                # Convert the chunk to dictionary format if needed
+                if hasattr(chunk, "model_dump"):
+                    chunk_dict = chunk.model_dump()
+                else:
+                    chunk_dict = chunk
+
+                # Convert using the existing conversion function (import here to avoid circular import)
+                from letta.llm_api.openai import convert_response_stream_chunk_to_chat_completion_format
+
+                converted_chunk = convert_response_stream_chunk_to_chat_completion_format(chunk_dict)
+
+                # Yield as ChatCompletionChunk
+                yield ChatCompletionChunk(**converted_chunk)
+
+            except Exception as e:
+                logger.error(f"Error converting Responses API stream chunk: {e}")
+                # Re-raise to be handled by the error handling in stream_async
+                raise
 
     @trace_method
     async def request_embeddings(self, inputs: List[str], embedding_config: EmbeddingConfig) -> List[List[float]]:
