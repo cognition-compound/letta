@@ -71,6 +71,18 @@ def convert_to_structured_output(openai_function: dict, allow_optional: bool = F
     See: https://platform.openai.com/docs/guides/structured-outputs/supported-schemas
     """
     try:
+        # Check if schema is already structured output compatible
+        parameters = openai_function.get("parameters", {})
+        if (parameters.get("type") == "object" and 
+            "additionalProperties" in parameters and
+            parameters["additionalProperties"] == False and
+            "properties" in parameters):
+            # Schema is already well-formed, just add strict mode
+            structured_output = openai_function.copy()
+            structured_output["strict"] = True
+            return structured_output
+
+        # Legacy path: rebuild schema for older/malformed tools
         description = openai_function.get("description", "")
 
         structured_output = {
