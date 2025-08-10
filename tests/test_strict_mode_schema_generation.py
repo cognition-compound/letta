@@ -22,9 +22,11 @@ class TestStrictModeSchemaGeneration:
         assert "query" in schema["parameters"]["required"], "query parameter must be in required array"
         assert "page" in schema["parameters"]["required"], "page parameter must be in required array for strict mode"
         
-        # The page parameter should still be nullable in the properties
+        # The page parameter should be nullable with anyOf
         page_prop = schema["parameters"]["properties"]["page"]
-        assert page_prop["type"] == "integer", "page should be integer type"
+        assert "anyOf" in page_prop, "page should have anyOf for nullable type"
+        assert {"type": "integer"} in page_prop["anyOf"], "page anyOf should include integer"
+        assert {"type": "null"} in page_prop["anyOf"], "page anyOf should include null"
         # Note: The function accepts Optional[int] which means it can be null
         # This is handled by the type annotation, not by omitting from required
 
@@ -37,11 +39,15 @@ class TestStrictModeSchemaGeneration:
         assert "page" in schema["parameters"]["required"], "page parameter must be in required array for strict mode"
         assert "start" in schema["parameters"]["required"], "start parameter must be in required array for strict mode"
         
-        # Both optional parameters should still be nullable
+        # Both optional parameters should be nullable with anyOf
         page_prop = schema["parameters"]["properties"]["page"]
         start_prop = schema["parameters"]["properties"]["start"]
-        assert page_prop["type"] == "integer", "page should be integer type"
-        assert start_prop["type"] == "integer", "start should be integer type"
+        assert "anyOf" in page_prop, "page should have anyOf for nullable type"
+        assert {"type": "integer"} in page_prop["anyOf"], "page anyOf should include integer"
+        assert {"type": "null"} in page_prop["anyOf"], "page anyOf should include null"
+        assert "anyOf" in start_prop, "start should have anyOf for nullable type"
+        assert {"type": "integer"} in start_prop["anyOf"], "start anyOf should include integer"
+        assert {"type": "null"} in start_prop["anyOf"], "start anyOf should include null"
 
     def test_memory_replace_schema_all_params_required(self):
         """Test that memory_replace has ALL parameters in required array."""
@@ -56,9 +62,11 @@ class TestStrictModeSchemaGeneration:
         assert "old_str" in schema["parameters"]["required"], "old_str parameter must be in required array"
         assert "new_str" in schema["parameters"]["required"], "new_str parameter must be in required array for strict mode"
         
-        # new_str should be nullable
+        # new_str should be nullable with anyOf
         new_str_prop = schema["parameters"]["properties"]["new_str"]
-        assert new_str_prop["type"] == "string", "new_str should be string type"
+        assert "anyOf" in new_str_prop, "new_str should have anyOf for nullable type"
+        assert {"type": "string"} in new_str_prop["anyOf"], "new_str anyOf should include string"
+        assert {"type": "null"} in new_str_prop["anyOf"], "new_str anyOf should include null"
 
     def test_optional_params_with_defaults_still_required(self):
         """Test that Optional parameters with default values are still in required array."""
@@ -82,9 +90,12 @@ class TestStrictModeSchemaGeneration:
         assert "required_param" in schema["parameters"]["required"]
         assert "optional_param" in schema["parameters"]["required"], "Optional params with defaults must still be in required array for strict mode"
         
-        # The optional parameter should have integer type (not nullable in the type field itself)
+        # The optional parameter should have anyOf schema to allow null
         optional_prop = schema["parameters"]["properties"]["optional_param"]
-        assert optional_prop["type"] == "integer", "Optional[int] should map to integer type"
+        assert "anyOf" in optional_prop, "Optional[int] should generate anyOf schema"
+        assert len(optional_prop["anyOf"]) == 2, "anyOf should have exactly 2 options"
+        assert {"type": "integer"} in optional_prop["anyOf"], "anyOf should include integer type"
+        assert {"type": "null"} in optional_prop["anyOf"], "anyOf should include null type"
 
     def test_strict_mode_required_array_completeness(self):
         """Test that the required array contains ALL parameters for strict mode."""

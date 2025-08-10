@@ -88,8 +88,15 @@ def type_to_json_schema_type(py_type) -> dict:
         type_args = get_args(py_type)
         assert optional_length(py_type) == 1, f"Optional type must have exactly one type argument, but got {py_type}"
 
-        # Extract and map the inner type
-        return type_to_json_schema_type(type_args[0])
+        # For Optional types, generate anyOf schema to allow null
+        # This is required for OpenAI strict mode compatibility
+        inner_type_schema = type_to_json_schema_type(type_args[0])
+        return {
+            "anyOf": [
+                inner_type_schema,
+                {"type": "null"}
+            ]
+        }
 
     # Handle Union types (except Optional which is handled above)
     if get_origin(py_type) is Union:

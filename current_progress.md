@@ -3,37 +3,54 @@
 ## 🚀 Recent Updates
 
 ### ✅ FIXED: OpenAI Strict Mode Schema Generation (2025-08-10)
-**Fixed critical bug where Optional parameters weren't included in required array** - ALL parameters must be in required array for OpenAI strict mode.
+**Fixed TWO critical bugs for OpenAI strict mode compatibility**
 
-**Problem:**
+**Problem 1: Missing parameters in required array**
 - OpenAI strict mode requires ALL parameters in the `required` array
 - Code only added params without defaults AND non-Optional types
 - Caused 400 errors: "Missing 'page' in required array"
 
-**Solution:**
+**Problem 2: Optional types not generating anyOf schemas**
+- Optional[int] was generating `{"type": "integer"}` instead of `{"anyOf": [{"type": "integer"}, {"type": "null"}]}`
+- This prevented null values from being accepted
+- OpenAI strict mode SUPPORTS anyOf for nullable types
+
+**Solutions:**
 - Modified `schema_generator.py` line 515-519 to add ALL parameters to required array
-- Optional parameters accept null through their type annotation
-- Added comprehensive test suite in `test_strict_mode_schema_generation.py`
+- Modified `type_to_json_schema_type()` to generate proper anyOf schemas for Optional types
+- Updated test suite to expect correct anyOf behavior
 - All tests passing ✅
+
+**Schema Generation Comparison:**
+```json
+// BEFORE (WRONG):
+"optional": {"type": "integer"}
+
+// AFTER (CORRECT):
+"optional": {
+  "anyOf": [
+    {"type": "integer"},
+    {"type": "null"}
+  ]
+}
+```
 
 **Cross-Provider Compatibility:**
 - ✅ Schema format works for both OpenAI and Anthropic
 - ✅ Anthropic converts `parameters` to `input_schema` seamlessly
-- ✅ Required array properly handled by both providers
+- ✅ Both providers handle anyOf schemas correctly
 
-**Modernization Attempt (ABANDONED):**
-- Attempted to use OpenAI's `agents` library but failed due to:
-  - Cannot handle Letta's `Agent` type in method signatures
-  - Cannot resolve forward references like `AgentState`
-  - Generates incompatible schema format for Pydantic models
-- **Cleanup performed:** Removed failed experiment code and dependency
+**Why Not Pydantic?**
+- Pydantic's `model_json_schema()` generates correct anyOf schemas
+- Our fix achieves the same result without refactoring
+- Both approaches now generate functionally equivalent schemas
 
 **Current State:**
-- ✅ Using original `schema_generator.py` with strict mode fix
-- ✅ All parameters properly included in required array
+- ✅ Using original `schema_generator.py` with BOTH fixes
+- ✅ All parameters in required array (strict mode requirement)
+- ✅ Optional types generate proper anyOf schemas (nullable support)
 - ✅ Cross-provider compatibility verified
-- ✅ Tests passing with 100% success rate
-- ✅ Deployed and working in staging environment
+- ✅ Tests updated and passing 5/5
 
 ### ✅ FIXED: Parallel Tool Execution Timeout Issue (2025-08-09)
 **Fixed critical design flaw where one hanging tool would kill ALL tools in batch** - Changed from batch timeout to individual tool timeouts.
