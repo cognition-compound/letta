@@ -45,12 +45,22 @@
 - Our fix achieves the same result without refactoring
 - Both approaches now generate functionally equivalent schemas
 
+**Why the Test Suite Failed to Catch This:**
+- **Tests were asserting the BUG was correct!** Original test: `assert optional_prop["type"] == "integer"`
+- Tests written AFTER implementation to match broken behavior
+- No specification-based testing against OpenAI requirements
+- No integration tests that actually validate schemas with OpenAI
+- This is a REPEATED pattern - we've had nullable issues in MCP tools and multimodal before
+
 **Current State:**
 - ✅ Using original `schema_generator.py` with BOTH fixes
 - ✅ All parameters in required array (strict mode requirement)
 - ✅ Optional types generate proper anyOf schemas (nullable support)
 - ✅ Cross-provider compatibility verified
-- ✅ Tests updated and passing 5/5
+- ✅ Tests FIXED to assert correct behavior (5/5 passing)
+
+**Critical Lesson:** Tests that assert current behavior lock in bugs. Need specification-based testing.
+See `TEST_FAILURE_ANALYSIS.md` for detailed analysis.
 
 ### ✅ FIXED: Parallel Tool Execution Timeout Issue (2025-08-09)
 **Fixed critical design flaw where one hanging tool would kill ALL tools in batch** - Changed from batch timeout to individual tool timeouts.
