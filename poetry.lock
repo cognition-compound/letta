@@ -5061,33 +5061,6 @@ realtime = ["websockets (>=13,<16)"]
 voice-helpers = ["numpy (>=2.0.2)", "sounddevice (>=0.5.1)"]
 
 [[package]]
-name = "openai-agents"
-version = "0.2.5"
-description = "OpenAI Agents SDK"
-optional = false
-python-versions = ">=3.9"
-groups = ["main"]
-files = [
-    {file = "openai_agents-0.2.5-py3-none-any.whl", hash = "sha256:082203b9ad70888a59ddb9430bc384d4ed4a1eef0823961f060b249303becaaa"},
-    {file = "openai_agents-0.2.5.tar.gz", hash = "sha256:c65aef12dbc236f43a70aae886c38b85dd9c68cbf89373c82f733b476e618ddd"},
-]
-
-[package.dependencies]
-griffe = ">=1.5.6,<2"
-mcp = {version = ">=1.11.0,<2", markers = "python_version >= \"3.10\""}
-openai = ">=1.97.1,<2"
-pydantic = ">=2.10,<3"
-requests = ">=2.0,<3"
-types-requests = ">=2.0,<3"
-typing-extensions = ">=4.12.2,<5"
-
-[package.extras]
-litellm = ["litellm (>=1.67.4.post1,<2)"]
-realtime = ["websockets (>=15.0,<16)"]
-viz = ["graphviz (>=0.17)"]
-voice = ["numpy (>=2.2.0,<3) ; python_version >= \"3.10\"", "websockets (>=15.0,<16)"]
-
-[[package]]
 name = "opentelemetry-api"
 version = "1.35.0"
 description = "OpenTelemetry Python API"
@@ -8178,21 +8151,6 @@ shellingham = ">=1.3.0"
 typing-extensions = ">=3.7.4.3"
 
 [[package]]
-name = "types-requests"
-version = "2.32.4.20250809"
-description = "Typing stubs for requests"
-optional = false
-python-versions = ">=3.9"
-groups = ["main"]
-files = [
-    {file = "types_requests-2.32.4.20250809-py3-none-any.whl", hash = "sha256:f73d1832fb519ece02c85b1f09d5f0dd3108938e7d47e7f94bbfa18a6782b163"},
-    {file = "types_requests-2.32.4.20250809.tar.gz", hash = "sha256:d8060de1c8ee599311f56ff58010fb4902f462a1470802cf9f6ed27bc46c4df3"},
-]
-
-[package.dependencies]
-urllib3 = ">=2"
-
-[[package]]
 name = "typing-extensions"
 version = "4.14.1"
 description = "Backported and Experimental Type Hints for Python 3.9+"
@@ -9107,4 +9065,4 @@ tests = ["wikipedia"]
 [metadata]
 lock-version = "2.1"
 python-versions = "<3.14,>=3.10"
-content-hash = "0f92e43ae04654f6aeeffc759862ef4f78d8f4cb61eed58e4107a5942c7c24be"
+content-hash = "fff0662649736a600e503357f4840e9a36646b5a69fe50bfa8564816d0261247"

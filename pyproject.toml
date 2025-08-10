@@ -74,7 +74,6 @@ e2b-code-interpreter = {version = "^1.0.3", optional = true}
 anthropic = "^0.58.0"
 letta_client = "^0.1.219"
 openai = "^1.99.3"
-openai-agents = "^0.2.5"
 opentelemetry-api = "1.35.0"
 opentelemetry-sdk = "1.35.0"
 opentelemetry-instrumentation-requests = "0.56b0"
