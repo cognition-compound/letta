@@ -172,7 +172,33 @@ async def lifespan(app_: FastAPI):
     global server
     try:
         if server.default_user:
+            # First, refresh the base tools
             await server.tool_manager.upsert_base_tools_async(actor=server.default_user)
+            
+            # Then, refresh schemas for ALL existing tools that have source code
+            # This ensures agents with already-attached tools get the fix
+            logger.info(f"[Worker {worker_id}] Refreshing schemas for all existing tools...")
+            from letta.functions.functions import derive_openai_json_schema
+            from letta.schemas.tool import ToolUpdate
+            all_tools = await server.tool_manager.list_tools_async(actor=server.default_user)
+            
+            for tool in all_tools:
+                if tool.source_code:
+                    try:
+                        # Regenerate schema using the fixed generator
+                        new_schema = derive_openai_json_schema(source_code=tool.source_code, name=tool.name)
+                        if new_schema != tool.json_schema:
+                            tool_json_schema = new_schema
+                            update = ToolUpdate(json_schema=new_schema)
+                            await server.tool_manager.update_tool_by_id_async(
+                                tool_id=tool.id,
+                                tool_update=update,
+                                actor=server.default_user
+                            )
+                            logger.debug(f"[Worker {worker_id}] Updated schema for tool: {tool.name}")
+                    except Exception as e:
+                        logger.warning(f"[Worker {worker_id}] Failed to refresh schema for tool {tool.name}: {e}")
+            
             logger.info(f"[Worker {worker_id}] Tool schema refresh complete")
         else:
             logger.warning(f"[Worker {worker_id}] No default user found, skipping tool schema refresh")
