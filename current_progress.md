@@ -2,6 +2,32 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: Broadcast Message Variable Shadowing (2025-08-11)
+**Fixed incorrect agent IDs being used in broadcast messages**
+
+**Problem:**
+- When broadcasting messages to multiple agents, all messages were being sent to the sender's own ID
+- Root cause: Loop variable `agent_state` was shadowing the function parameter `agent_state`
+- Line 64 in `multi_agent_tool_executor.py` used `agent_state.id` which referred to the sender, not the target agents
+
+**Evidence:**
+- Error log showed "name 'ToolReturn' is not defined" but this was a red herring from older deployed code
+- The real issue was in the list comprehension using the wrong variable
+
+**Solution:**
+- Changed loop variable from `agent_state` to `matched_agent` to avoid shadowing
+- Now correctly uses `matched_agent.id` for the target agent ID
+- Sender's ID still correctly used for `source_agent_id` parameter
+
+**Files Modified:**
+- `letta/services/tool_executor/multi_agent_tool_executor.py:64` - Fixed variable shadowing in broadcast loop
+- `tests/test_broadcast_message_fix.py` - Added comprehensive tests to verify correct behavior
+
+**Technical Details:**
+- Before: `asyncio.create_task(self._process_agent(agent_id=agent_state.id, ...)) for agent_state in matching_agents`
+- After: `asyncio.create_task(self._process_agent(agent_id=matched_agent.id, ...)) for matched_agent in matching_agents`
+- Tests verify each agent receives the message with their correct ID, not the sender's ID
+
 ### ✅ FIXED: Agent-to-Agent Message Processing & Schema Issues (2025-08-11)
 **Fixed two critical issues preventing agent-to-agent communication**
 
