@@ -249,20 +249,7 @@ class SyncServer(Server):
         if init_with_default_org_and_user:
             self.default_org = self.organization_manager.create_default_organization()
             self.default_user = self.user_manager.create_default_user()
-        else:
-            # Even if not initializing, get the default user for tool refresh
-            try:
-                self.default_user = self.user_manager.get_default_user()
-            except:
-                # If no default user exists, skip tool refresh
-                self.default_user = None
-        
-        # ALWAYS refresh tool schemas on startup to ensure they use the latest schema generator
-        # This is critical for OpenAI strict mode compatibility
-        if hasattr(self, 'default_user') and self.default_user:
-            logger.info("Refreshing tool schemas with latest generator...")
             self.tool_manager.upsert_base_tools(actor=self.default_user)
-            logger.info("Tool schema refresh complete")
 
             # Add composio keys to the tool sandbox env vars of the org
             if tool_settings.composio_api_key:

@@ -41,18 +41,18 @@
 - OpenAI strict mode validation rejected the incomplete schemas
 
 **Solution:**
-- Modified `SyncServer.__init__` to ALWAYS refresh tool schemas on startup
-- Calls `tool_manager.upsert_base_tools()` which regenerates schemas using our fixed generator
+- Modified REST API `lifespan` function to ALWAYS refresh tool schemas on startup
+- Calls `tool_manager.upsert_base_tools_async()` which regenerates schemas using our fixed generator
 - This happens automatically every time the server starts, no manual intervention needed
 
 **Implementation Details:**
-- `upsert_base_tools()` loads function modules and calls `load_function_set()`
+- `upsert_base_tools_async()` loads function modules and calls `load_function_set()`
 - `load_function_set()` uses our fixed `generate_schema()` function
-- Tools are updated in database via `create_or_update_tool()`
-- Server now refreshes schemas even when not initializing default org/user
+- Tools are updated in database via `create_or_update_tool_async()`
+- Refresh happens in FastAPI lifespan, where the REST API actually initializes
 
 **Files Modified:**
-- `letta/server/server.py:248-265` - Always refresh tool schemas on startup
+- `letta/server/rest_api/app.py:169-180` - Always refresh tool schemas on startup in lifespan
 
 **Technical Details:**
 - Job creation ensures visibility into agent message processing

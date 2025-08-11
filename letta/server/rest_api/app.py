@@ -166,8 +166,20 @@ async def lifespan(app_: FastAPI):
     else:
         logger.info(f"[Worker {worker_id}] Disabled pinecone")
 
-    logger.info(f"[Worker {worker_id}] Starting scheduler with leader election")
+    # ALWAYS refresh tool schemas on startup to ensure they use the latest schema generator
+    # This is critical for OpenAI strict mode compatibility
+    logger.info(f"[Worker {worker_id}] Refreshing tool schemas with latest generator...")
     global server
+    try:
+        if server.default_user:
+            await server.tool_manager.upsert_base_tools_async(actor=server.default_user)
+            logger.info(f"[Worker {worker_id}] Tool schema refresh complete")
+        else:
+            logger.warning(f"[Worker {worker_id}] No default user found, skipping tool schema refresh")
+    except Exception as e:
+        logger.error(f"[Worker {worker_id}] Tool schema refresh failed: {e}", exc_info=True)
+    
+    logger.info(f"[Worker {worker_id}] Starting scheduler with leader election")
     try:
         await start_scheduler_with_leader_election(server)
         logger.info(f"[Worker {worker_id}] Scheduler initialization completed")
