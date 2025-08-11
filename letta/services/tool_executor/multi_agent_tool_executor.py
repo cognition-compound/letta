@@ -114,7 +114,10 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
                 actor=self.actor,
             )
 
-            letta_response = await letta_agent.step([MessageCreate(role=MessageRole.system, content=[TextContent(text=message)])])
+            # Fix: Use user role instead of system role for agent-to-agent messages
+            # This prevents OpenAI tool call ID tracking issues that occur when system messages 
+            # are injected into existing conversation contexts
+            letta_response = await letta_agent.step([MessageCreate(role=MessageRole.user, content=[TextContent(text=message)])])
             messages = letta_response.messages
 
             send_message_content = [message.content for message in messages if isinstance(message, AssistantMessage)]

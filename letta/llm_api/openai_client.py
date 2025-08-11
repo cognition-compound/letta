@@ -12,6 +12,7 @@ from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 from openai.types.responses import Response
 
 from letta.constants import LETTA_MODEL_ENDPOINT
+from letta.llm_api.tool_call_validator import validate_and_fix_conversation_before_api_call
 from letta.errors import (
     ContextWindowExceededError,
     ErrorCode,
@@ -492,6 +493,29 @@ class OpenAIClient(LLMClientBase):
         """
         Constructs a request object in the Responses API format for the OpenAI API.
         """
+        # VALIDATION: Check tool call ID consistency before building request
+        validation_context = {
+            "model": llm_config.model,
+            "tools_count": len(tools) if tools else 0,
+            "messages_count": len(messages),
+            "actor_id": getattr(self.actor, 'id', None) if self.actor else None,
+        }
+        
+        validated_messages, analysis = validate_and_fix_conversation_before_api_call(messages, validation_context)
+        
+        # Log critical validation failures but don't block the request
+        # This is for debugging the root cause of tool call ID issues
+        if not analysis.is_valid():
+            logger.error(f"CRITICAL tool call validation issues detected before OpenAI API call: {len(analysis.issues)} issues found")
+            for issue in analysis.issues:
+                if issue.severity.value in ['critical', 'error']:
+                    logger.error(f"Tool call validation error: {issue.description} | Context: {issue.context}")
+        elif analysis.has_warnings():
+            logger.warning(f"Tool call validation warnings detected: {len(analysis.issues)} issues found")
+        
+        # Use the validated (and potentially fixed) messages
+        messages = validated_messages
+        
         # Convert messages to Responses API input format
         response_input = self._convert_messages_to_response_input(messages)
 
