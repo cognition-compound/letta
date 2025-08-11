@@ -2,6 +2,32 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: Heartbeat Handling in Parallel Tool Execution (2025-08-11)
+**Fixed critical bug where agent workflows terminated prematurely due to broken heartbeat detection**
+
+**Problem:**
+- Agents executing one tool and stopping, particularly affecting research workflows
+- Root cause: Heartbeat request information was completely lost during parallel tool execution
+- Line 337 in `tool_execution_manager.py`: `_pop_heartbeat(tool_args)` return value was discarded
+- Lines 275 & 404: `continue_stepping = True` set for ANY successful tool, not just heartbeat requests
+
+**Solution:**
+- Capture heartbeat request value: `heartbeat_requested = _pop_heartbeat(tool_args)`
+- Added `heartbeat_requested` field to `ParallelToolCallResult` schema
+- Only set `continue_stepping = True` when tool explicitly requests heartbeat
+- Failed tools never trigger continuation regardless of heartbeat
+
+**Impact:**
+- Research agents now properly continue multi-step workflows
+- Agent-to-agent communication flows work correctly
+- Tool execution behaves as designed with proper heartbeat handling
+
+**Files Modified:**
+- `letta/schemas/parallel_tool_call.py` - Added heartbeat_requested field
+- `letta/services/tool_executor/tool_execution_manager.py` - Fixed heartbeat capture and logic
+
+## 🚀 Recent Updates
+
 ### ✅ FIXED: OpenAI Strict Mode Schema Generation (2025-08-10)
 **Fixed TWO critical bugs for OpenAI strict mode compatibility**
 

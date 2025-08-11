@@ -262,6 +262,7 @@ class ToolExecutionManager:
                     ),
                     execution_time_ms=config.timeout_per_tool_seconds * 1000 if isinstance(result, asyncio.TimeoutError) else 0.0,
                     error=str(result),
+                    heartbeat_requested=False,  # Failed tools don't request heartbeat
                 )
                 parallel_results.append(error_result)
                 failed_count += 1
@@ -270,9 +271,9 @@ class ToolExecutionManager:
                 parallel_results.append(result)
                 if result.success_flag:
                     successful_count += 1
-                    # Check if any tool requested heartbeat (continue stepping)
-                    if hasattr(result.execution_result, 'func_return'):
-                        continue_stepping = True  # Conservative approach - continue if any tool succeeded
+                    # Check if this specific tool requested heartbeat (continue stepping)
+                    if result.heartbeat_requested:
+                        continue_stepping = True  # Only continue if heartbeat was explicitly requested
                 else:
                     failed_count += 1
 
@@ -334,7 +335,7 @@ class ToolExecutionManager:
 
             # Parse tool arguments
             tool_args = _safe_load_tool_call_str(tool_call.function.arguments)
-            _pop_heartbeat(tool_args)  # Remove heartbeat from args
+            heartbeat_requested = _pop_heartbeat(tool_args)  # Remove heartbeat from args and capture its value
             tool_args.pop(INNER_THOUGHTS_KWARG, None)  # Remove thinking from args
 
             # Execute the tool
@@ -354,6 +355,7 @@ class ToolExecutionManager:
                 execution_result=execution_result,
                 execution_time_ms=execution_time_ms,
                 error=None if execution_result.success_flag else execution_result.func_return,
+                heartbeat_requested=heartbeat_requested if execution_result.success_flag else False,
             )
 
         except Exception as e:
@@ -378,6 +380,7 @@ class ToolExecutionManager:
                 execution_result=error_result,
                 execution_time_ms=execution_time_ms,
                 error=str(e),
+                heartbeat_requested=False,  # Failed tools don't request heartbeat
             )
 
     async def _execute_tools_sequentially(
@@ -401,7 +404,9 @@ class ToolExecutionManager:
             
             if result.success_flag:
                 successful_count += 1
-                continue_stepping = True  # Continue if any tool succeeded
+                # Only continue if this tool explicitly requested heartbeat
+                if result.heartbeat_requested:
+                    continue_stepping = True
             else:
                 failed_count += 1
 

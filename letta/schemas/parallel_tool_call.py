@@ -14,6 +14,7 @@ class ParallelToolCallResult(BaseModel):
     execution_result: ToolExecutionResult = Field(..., description="Result of the tool execution")
     execution_time_ms: float = Field(..., description="Time taken to execute this tool call in milliseconds")
     error: Optional[str] = Field(None, description="Error message if execution failed, None if successful")
+    heartbeat_requested: bool = Field(default=False, description="Whether this tool requested a heartbeat continuation")
 
     @property
     def success_flag(self) -> bool:
