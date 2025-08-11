@@ -2,8 +2,10 @@
 
 ## 🚀 Recent Updates
 
-### ✅ FIXED: Agent-to-Agent Message Job Creation (2025-08-11)
-**Fixed issue where agent-to-agent messages weren't properly tracked with jobs**
+### ✅ FIXED: Agent-to-Agent Message Processing & Schema Issues (2025-08-11)
+**Fixed two critical issues preventing agent-to-agent communication**
+
+**Issue 1: Missing Job Creation for Agent Messages**
 
 **Problem:**
 - Research agents weren't processing messages sent from other agents
@@ -26,11 +28,27 @@
 - `letta/services/tool_executor/multi_agent_tool_executor.py:69-152` - Rewrote _process_agent to create and track jobs
 - `tests/test_agent_to_agent_job_fix.py` - Added comprehensive tests
 
+**Issue 2: Broken Tool Schemas for Strict Mode**
+
+**Problem:**
+- Research agent failing with "Unhandled LLM error: 'required'" when processing messages
+- Tool schemas stored in database were generated before our OpenAI strict mode fix
+- Core memory tools like `archival_memory_insert` had missing parameters in required array
+
+**Root Cause:**
+- Tools cached schemas from before our schema generator fix (see OpenAI Strict Mode fix above)
+- These cached schemas didn't include all parameters in the required array
+- OpenAI strict mode validation rejected the incomplete schemas
+
+**Solution:**
+- Created `scripts/regenerate_tool_schemas.py` to refresh tool schemas
+- Script uses the fixed `derive_openai_json_schema` function from our patched generator
+- Updates all agent tools with correct schemas including all params in required array
+
 **Technical Details:**
-- Creates `Run` job with metadata including source and target agent IDs
-- Updates job status throughout execution lifecycle
-- Returns job_id in response for tracking
-- Maintains backward compatibility with async messaging
+- Job creation ensures visibility into agent message processing
+- Schema regeneration ensures OpenAI strict mode compatibility
+- Both fixes work together to enable reliable agent-to-agent communication
 
 ### ✅ FIXED: Duplicate Agent Responses Due to Heartbeat Race Condition (2025-08-11)
 **Fixed agent sending duplicate responses when using `send(to="user", request_heartbeat=true)`**
