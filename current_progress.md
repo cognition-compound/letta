@@ -41,14 +41,24 @@
 - OpenAI strict mode validation rejected the incomplete schemas
 
 **Solution:**
-- Created `scripts/regenerate_tool_schemas.py` to refresh tool schemas
-- Script uses the fixed `derive_openai_json_schema` function from our patched generator
-- Updates all agent tools with correct schemas including all params in required array
+- Modified `SyncServer.__init__` to ALWAYS refresh tool schemas on startup
+- Calls `tool_manager.upsert_base_tools()` which regenerates schemas using our fixed generator
+- This happens automatically every time the server starts, no manual intervention needed
+
+**Implementation Details:**
+- `upsert_base_tools()` loads function modules and calls `load_function_set()`
+- `load_function_set()` uses our fixed `generate_schema()` function
+- Tools are updated in database via `create_or_update_tool()`
+- Server now refreshes schemas even when not initializing default org/user
+
+**Files Modified:**
+- `letta/server/server.py:248-265` - Always refresh tool schemas on startup
 
 **Technical Details:**
 - Job creation ensures visibility into agent message processing
-- Schema regeneration ensures OpenAI strict mode compatibility
+- Automatic schema regeneration on startup ensures OpenAI strict mode compatibility
 - Both fixes work together to enable reliable agent-to-agent communication
+- No SSH or manual scripts needed - schemas auto-refresh on every deployment
 
 ### ✅ FIXED: Duplicate Agent Responses Due to Heartbeat Race Condition (2025-08-11)
 **Fixed agent sending duplicate responses when using `send(to="user", request_heartbeat=true)`**
