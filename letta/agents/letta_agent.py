@@ -43,7 +43,7 @@ from letta.schemas.letta_message_content import OmittedReasoningContent, Reasoni
 from letta.schemas.letta_response import LettaResponse
 from letta.schemas.letta_stop_reason import LettaStopReason, StopReasonType
 from letta.schemas.llm_config import LLMConfig
-from letta.schemas.message import Message, MessageCreate
+from letta.schemas.message import Message, MessageCreate, ToolReturn
 from letta.schemas.openai.chat_completion_response import ToolCall, UsageStatistics
 from letta.schemas.parallel_tool_call import ParallelExecutionSummary, ParallelToolCallConfig
 from letta.schemas.provider_trace import ProviderTraceCreate
