@@ -2,6 +2,34 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: Missing request_heartbeat Parameter in Tool Schemas (2025-08-11)
+**Fixed tool schemas missing the request_heartbeat parameter**
+
+**Problem:**
+- Tools showed no `request_heartbeat` field in the ADE UI
+- MCP tools and Letta tools created before the heartbeat feature lacked the parameter
+- Removing and re-adding an MCP tool would add the field, suggesting a schema generation issue
+
+**Root Cause:**
+- `generate_schema()` function didn't add the heartbeat parameter
+- Our startup refresh used `derive_openai_json_schema` → `generate_schema` which didn't add heartbeat
+- MCP tools created fresh used `generate_tool_schema_for_mcp` which DID add heartbeat
+- This created inconsistency where old tools lacked heartbeat but new MCP tools had it
+
+**Solution:**
+- Modified `generate_schema()` to always add the `request_heartbeat` parameter
+- Added at lines 538-543 in `schema_generator.py`
+- Now ALL schema generation paths include heartbeat
+
+**Files Modified:**
+- `letta/functions/schema_generator.py:538-543` - Added heartbeat to generate_schema
+- `tests/test_heartbeat_in_schemas.py` - Added comprehensive tests
+
+**Impact:**
+- All tools now have `request_heartbeat` parameter after startup refresh
+- Consistent behavior across all tool types (Letta, MCP, custom)
+- Agents can properly use heartbeat for continuation control
+
 ### ✅ FIXED: Missing ToolReturn Import & Variable Shadowing (2025-08-11)
 **Fixed two issues preventing agent-to-agent communication**
 
