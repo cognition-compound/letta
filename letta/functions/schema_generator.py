@@ -534,6 +534,14 @@ def generate_schema(function, name: Optional[str] = None, description: Optional[
         # TODO is this not duplicating the other append directly above?
         if param.annotation == inspect.Parameter.empty:
             schema["parameters"]["required"].append(param.name)
+    
+    # Add the optional heartbeat parameter to all tool schemas
+    schema["parameters"]["properties"][REQUEST_HEARTBEAT_PARAM] = {
+        "type": "boolean",
+        "description": REQUEST_HEARTBEAT_DESCRIPTION,
+    }
+    schema["parameters"]["required"].append(REQUEST_HEARTBEAT_PARAM)
+    
     return schema
 
 
