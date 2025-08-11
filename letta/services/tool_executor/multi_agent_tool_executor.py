@@ -61,7 +61,7 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
         augmented_message = f"[Broadcast message from agent '{agent_state.id}'] {message}"
 
         tasks = [
-            asyncio.create_task(self._process_agent(agent_id=agent_state.id, message=augmented_message, source_agent_id=agent_state.id)) for agent_state in matching_agents
+            asyncio.create_task(self._process_agent(agent_id=matched_agent.id, message=augmented_message, source_agent_id=agent_state.id)) for matched_agent in matching_agents
         ]
         results = await asyncio.gather(*tasks)
         return str(results)

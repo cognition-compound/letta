@@ -36,29 +36,48 @@
 - Core memory tools like `archival_memory_insert` had missing parameters in required array
 
 **Root Cause:**
-- Tools cached schemas from before our schema generator fix (see OpenAI Strict Mode fix above)
+- Tools cached schemas from before our schema generator fix (see OpenAI Strict Mode fix below)
 - These cached schemas didn't include all parameters in the required array
 - OpenAI strict mode validation rejected the incomplete schemas
 
-**Solution:**
-- Modified REST API `lifespan` function to ALWAYS refresh tool schemas on startup
-- Calls `tool_manager.upsert_base_tools_async()` which regenerates schemas using our fixed generator
-- This happens automatically every time the server starts, no manual intervention needed
+**Solution - Two Part Fix:**
+
+**Part 1: Refresh BASE_TOOLS on startup**
+- Modified REST API `lifespan` function to call `tool_manager.upsert_base_tools_async()`
+- This regenerates schemas for BASE_TOOLS using our fixed generator
+- Location: `letta/server/rest_api/app.py:176`
+
+**Part 2: Refresh ALL existing tools with source code**
+- After refreshing BASE_TOOLS, iterate through ALL tools in database
+- For each tool with source_code, regenerate its schema using `derive_openai_json_schema()`
+- Update the tool in database if schema changed
+- Location: `letta/server/rest_api/app.py:178-200`
 
 **Implementation Details:**
-- `upsert_base_tools_async()` loads function modules and calls `load_function_set()`
-- `load_function_set()` uses our fixed `generate_schema()` function
-- Tools are updated in database via `create_or_update_tool_async()`
-- Refresh happens in FastAPI lifespan, where the REST API actually initializes
+```python
+# First, refresh the base tools
+await server.tool_manager.upsert_base_tools_async(actor=server.default_user)
 
-**Files Modified:**
-- `letta/server/rest_api/app.py:169-180` - Always refresh tool schemas on startup in lifespan
+# Then, refresh schemas for ALL existing tools that have source code
+all_tools = await server.tool_manager.list_tools_async(actor=server.default_user)
+for tool in all_tools:
+    if tool.source_code:
+        new_schema = derive_openai_json_schema(source_code=tool.source_code, name=tool.name)
+        if new_schema != tool.json_schema:
+            update = ToolUpdate(json_schema=new_schema)
+            await server.tool_manager.update_tool_by_id_async(
+                tool_id=tool.id,
+                tool_update=update,
+                actor=server.default_user
+            )
+```
 
 **Technical Details:**
 - Job creation ensures visibility into agent message processing
 - Automatic schema regeneration on startup ensures OpenAI strict mode compatibility
 - Both fixes work together to enable reliable agent-to-agent communication
 - No SSH or manual scripts needed - schemas auto-refresh on every deployment
+- Verified working with test messages: "Pinguine", "Blaufleckentiger", "Grottenolme"
 
 ### ✅ FIXED: Duplicate Agent Responses Due to Heartbeat Race Condition (2025-08-11)
 **Fixed agent sending duplicate responses when using `send(to="user", request_heartbeat=true)`**
