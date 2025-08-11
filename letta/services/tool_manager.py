@@ -1,7 +1,7 @@
 import importlib
 import os
 import warnings
-from typing import List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Union
 
 from sqlalchemy import func, select
 
@@ -18,6 +18,8 @@ from letta.constants import (
     LETTA_TOOL_SET,
     LOCAL_ONLY_MULTI_AGENT_TOOLS,
     MCP_TOOL_TAG_NAME_PREFIX,
+    REQUEST_HEARTBEAT_PARAM,
+    REQUEST_HEARTBEAT_DESCRIPTION,
 )
 from letta.functions.functions import derive_openai_json_schema, load_function_set
 from letta.log import get_logger
@@ -37,6 +39,44 @@ from letta.settings import settings
 from letta.utils import enforce_types, printd
 
 logger = get_logger(__name__)
+
+
+def ensure_heartbeat_in_schema(json_schema: Optional[dict]) -> Optional[dict]:
+    """Ensure that the request_heartbeat parameter is present in a tool schema.
+    
+    This function modifies the schema in-place and returns it for convenience.
+    It's used to ensure that tools created or updated via the API with custom
+    schemas still get the heartbeat parameter.
+    """
+    if json_schema is None:
+        return json_schema
+    
+    # Ensure parameters exists
+    if "parameters" not in json_schema:
+        json_schema["parameters"] = {"type": "object", "properties": {}, "required": []}
+    
+    params = json_schema["parameters"]
+    
+    # Ensure properties exists
+    if "properties" not in params:
+        params["properties"] = {}
+    
+    # Ensure required exists
+    if "required" not in params:
+        params["required"] = []
+    
+    # Add heartbeat if not present
+    if REQUEST_HEARTBEAT_PARAM not in params["properties"]:
+        params["properties"][REQUEST_HEARTBEAT_PARAM] = {
+            "type": "boolean",
+            "description": REQUEST_HEARTBEAT_DESCRIPTION,
+        }
+    
+    # Add to required if not present
+    if REQUEST_HEARTBEAT_PARAM not in params["required"]:
+        params["required"].append(REQUEST_HEARTBEAT_PARAM)
+    
+    return json_schema
 
 
 class ToolManager:
@@ -167,6 +207,10 @@ class ToolManager:
     def create_tool(self, pydantic_tool: PydanticTool, actor: PydanticUser) -> PydanticTool:
         """Create a new tool based on the ToolCreate schema."""
         with db_registry.session() as session:
+            # Ensure heartbeat is in the schema if json_schema is provided
+            if pydantic_tool.json_schema:
+                pydantic_tool.json_schema = ensure_heartbeat_in_schema(pydantic_tool.json_schema)
+            
             # Auto-generate description if not provided
             if pydantic_tool.description is None:
                 pydantic_tool.description = pydantic_tool.json_schema.get("description", None)
@@ -183,6 +227,10 @@ class ToolManager:
     async def create_tool_async(self, pydantic_tool: PydanticTool, actor: PydanticUser) -> PydanticTool:
         """Create a new tool based on the ToolCreate schema."""
         async with db_registry.async_session() as session:
+            # Ensure heartbeat is in the schema if json_schema is provided
+            if pydantic_tool.json_schema:
+                pydantic_tool.json_schema = ensure_heartbeat_in_schema(pydantic_tool.json_schema)
+            
             # Auto-generate description if not provided
             if pydantic_tool.description is None:
                 pydantic_tool.description = pydantic_tool.json_schema.get("description", None)
@@ -404,6 +452,11 @@ class ToolManager:
 
             # Update tool attributes with only the fields that were explicitly set
             update_data = tool_update.model_dump(to_orm=True, exclude_none=True)
+            
+            # If json_schema is being updated, ensure it has heartbeat
+            if "json_schema" in update_data and update_data["json_schema"]:
+                update_data["json_schema"] = ensure_heartbeat_in_schema(update_data["json_schema"])
+            
             for key, value in update_data.items():
                 setattr(tool, key, value)
 
@@ -433,6 +486,11 @@ class ToolManager:
 
             # Update tool attributes with only the fields that were explicitly set
             update_data = tool_update.model_dump(to_orm=True, exclude_none=True)
+            
+            # If json_schema is being updated, ensure it has heartbeat
+            if "json_schema" in update_data and update_data["json_schema"]:
+                update_data["json_schema"] = ensure_heartbeat_in_schema(update_data["json_schema"])
+            
             for key, value in update_data.items():
                 setattr(tool, key, value)
 
