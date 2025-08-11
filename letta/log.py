@@ -113,6 +113,7 @@ PRODUCTION_LOGGING = {
         "Letta": {
             "level": "INFO",
             "propagate": True,
+            "handlers": [],  # Empty handlers to avoid duplication with root logger
         },
         "uvicorn": {
             "level": "WARNING",  # Reduce uvicorn noise in production
@@ -180,6 +181,7 @@ DEVELOPMENT_LOGGING = {
         "Letta": {
             "level": logging.DEBUG if settings.debug else logging.INFO,
             "propagate": True,  # Let logs bubble up to root
+            "handlers": [],  # Empty handlers to avoid duplication with root logger
         },
         "uvicorn": {
             "level": "CRITICAL",

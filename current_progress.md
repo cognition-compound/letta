@@ -2,6 +2,22 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: Duplicate Logging Issue (2025-08-11)
+**Fixed duplicate log entries appearing with identical timestamps**
+
+**Problem:**
+- All log messages were appearing twice in logs with identical timestamps and span IDs
+- Root cause: Both Letta logger and root logger had the same handlers configured
+- With `propagate=True`, messages were processed by both loggers, creating duplicates
+
+**Solution:**
+- Set `handlers: []` for Letta logger in both production and development configs
+- Logger now inherits handlers from root logger via propagation
+- Eliminates duplicate log processing while maintaining proper log hierarchy
+
+**Files Modified:**
+- `letta/log.py` - Fixed both PRODUCTION_LOGGING and DEVELOPMENT_LOGGING configs
+
 ### ✅ FIXED: Heartbeat Handling in Parallel Tool Execution (2025-08-11)
 **Fixed critical bug where agent workflows terminated prematurely due to broken heartbeat detection**
 
