@@ -175,29 +175,39 @@ async def lifespan(app_: FastAPI):
             # First, refresh the base tools
             await server.tool_manager.upsert_base_tools_async(actor=server.default_user)
             
-            # Then, refresh schemas for ALL existing tools that have source code
+            # Then, refresh schemas for ALL existing tools
             # This ensures agents with already-attached tools get the fix
             logger.info(f"[Worker {worker_id}] Refreshing schemas for all existing tools...")
             from letta.functions.functions import derive_openai_json_schema
             from letta.schemas.tool import ToolUpdate
+            from letta.services.tool_manager import ensure_heartbeat_in_schema
             all_tools = await server.tool_manager.list_tools_async(actor=server.default_user)
             
             for tool in all_tools:
-                if tool.source_code:
-                    try:
-                        # Regenerate schema using the fixed generator
+                try:
+                    new_schema = None
+                    
+                    if tool.source_code:
+                        # For tools with source code, regenerate schema from source
                         new_schema = derive_openai_json_schema(source_code=tool.source_code, name=tool.name)
-                        if new_schema != tool.json_schema:
-                            tool_json_schema = new_schema
-                            update = ToolUpdate(json_schema=new_schema)
-                            await server.tool_manager.update_tool_by_id_async(
-                                tool_id=tool.id,
-                                tool_update=update,
-                                actor=server.default_user
-                            )
-                            logger.debug(f"[Worker {worker_id}] Updated schema for tool: {tool.name}")
-                    except Exception as e:
-                        logger.warning(f"[Worker {worker_id}] Failed to refresh schema for tool {tool.name}: {e}")
+                    elif tool.json_schema:
+                        # For tools without source code (like MCP tools), just ensure heartbeat is present
+                        # Make a copy to avoid modifying the original
+                        import copy
+                        schema_copy = copy.deepcopy(tool.json_schema)
+                        new_schema = ensure_heartbeat_in_schema(schema_copy)
+                    
+                    # Update the tool if the schema changed
+                    if new_schema and new_schema != tool.json_schema:
+                        update = ToolUpdate(json_schema=new_schema)
+                        await server.tool_manager.update_tool_by_id_async(
+                            tool_id=tool.id,
+                            tool_update=update,
+                            actor=server.default_user
+                        )
+                        logger.debug(f"[Worker {worker_id}] Updated schema for tool: {tool.name}")
+                except Exception as e:
+                    logger.warning(f"[Worker {worker_id}] Failed to refresh schema for tool {tool.name}: {e}")
             
             logger.info(f"[Worker {worker_id}] Tool schema refresh complete")
         else:
