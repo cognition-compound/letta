@@ -37,6 +37,9 @@
 **Technical Details:**
 - ToolReturn is used at line 1178 in letta_agent.py but wasn't imported
 - Broadcast loop now uses: `for matched_agent in matching_agents` instead of reusing `agent_state`
+- **Critical Finding**: This code was added July 29, 2025 but the missing import was never caught
+- All existing tests use heavy mocking (`patch.object(LettaAgent, '__init__')`) and never exercise the real code path
+- This means the parallel tool execution with ToolReturn has likely NEVER been tested or run successfully
 
 ### ✅ FIXED: Agent-to-Agent Message Processing & Schema Issues (2025-08-11)
 **Fixed two critical issues preventing agent-to-agent communication**
