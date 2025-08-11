@@ -349,6 +349,12 @@ class ToolExecutionManager:
             end_time = asyncio.get_event_loop().time()
             execution_time_ms = (end_time - start_time) * 1000
 
+            # Special case: send(to="user") should never trigger heartbeat continuation
+            # The message to the user IS the response - there's nothing to continue
+            if tool_name == "send" and tool_args.get("to") == "user":
+                heartbeat_requested = False
+                self.logger.debug(f"Forcing heartbeat=False for send(to='user') to prevent duplicate responses")
+
             return ParallelToolCallResult(
                 tool_call_id=tool_call_id,
                 tool_call=tool_call,

@@ -1322,6 +1322,7 @@ class LettaAgent(BaseAgent):
             tool_rule_violated=tool_rule_violated,
             tool_rules_solver=tool_rules_solver,
             is_final_step=is_final_step,
+            tool_args=tool_args,
         )
 
         # 5.  Persist step + messages and propagate to jobs
@@ -1379,7 +1380,14 @@ class LettaAgent(BaseAgent):
         tool_rule_violated: bool,
         tool_rules_solver: ToolRulesSolver,
         is_final_step: bool | None,
+        tool_args: dict | None = None,
     ) -> tuple[bool, str | None, LettaStopReason | None]:
+
+        # Special case: send(to="user") should never trigger heartbeat continuation
+        # The message to the user IS the response - there's nothing to continue
+        if tool_call_name == "send" and tool_args and tool_args.get("to") == "user":
+            request_heartbeat = False
+            self.logger.debug(f"Forcing heartbeat=False for send(to='user') to prevent duplicate responses")
 
         continue_stepping = request_heartbeat
         heartbeat_reason: str | None = None

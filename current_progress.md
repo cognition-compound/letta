@@ -2,6 +2,35 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: Duplicate Agent Responses Due to Heartbeat Race Condition (2025-08-11)
+**Fixed agent sending duplicate responses when using `send(to="user", request_heartbeat=true)`**
+
+**Problem:**
+- Users saw two similar but slightly different agent responses 8 seconds apart
+- Root cause: `send(to="user")` returns immediately without waiting for delivery
+- Heartbeat mechanism then triggered a NEW agent step with fresh LLM call
+- LLM generated similar but different response to same context
+
+**Evidence:**
+- First response: "Alles klar. Ich triggere die Recherche erneut..."
+- Second response: "Alles klar. Ich starte die Recherche erneut..."
+- 8-second gap matched typical LLM response time
+
+**Solution Implemented:**
+- Special-cased `send(to="user")` to never trigger heartbeat continuation
+- When sending to user, the message IS the response - nothing to continue
+- Fixed in both parallel and sequential execution paths
+
+**Files Modified:**
+- `letta/services/tool_executor/tool_execution_manager.py:354-356` - Force heartbeat=False for send(to="user") in parallel execution
+- `letta/agents/letta_agent.py:1387-1389` - Force heartbeat=False for send(to="user") in sequential execution  
+- `letta/agents/letta_agent.py:1325` - Pass tool_args to _decide_continuation for checking
+
+**Technical Details:**
+- Detects when tool is `send` and `to` parameter equals `"user"`
+- Forces `heartbeat_requested = False` to prevent continuation
+- Prevents duplicate agent steps and redundant LLM calls
+
 ### ✅ FIXED: Duplicate Logging Issue (2025-08-11)
 **Fixed duplicate log entries appearing with identical timestamps**
 
