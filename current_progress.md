@@ -2,6 +2,36 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: Agent-to-Agent Message Job Creation (2025-08-11)
+**Fixed issue where agent-to-agent messages weren't properly tracked with jobs**
+
+**Problem:**
+- Research agents weren't processing messages sent from other agents
+- `_process_agent` was directly calling `await letta_agent.step()` in a background task
+- No job was created to track the agent message processing
+- No proper status tracking or failure handling for inter-agent messages
+
+**Evidence:**
+- Logs showed message delivery (`send_message_to_agent_async called`) but no job creation
+- Research agent loaded from DB but never ran a step
+- Background task silently failed or never completed
+
+**Solution Implemented:**
+- Modified `_process_agent` to create a proper `Run` job before executing agent step
+- Added job status updates (created → running → completed/failed)
+- Preserved async fire-and-forget behavior while adding proper tracking
+- Added source_agent_id parameter for better tracking
+
+**Files Modified:**
+- `letta/services/tool_executor/multi_agent_tool_executor.py:69-152` - Rewrote _process_agent to create and track jobs
+- `tests/test_agent_to_agent_job_fix.py` - Added comprehensive tests
+
+**Technical Details:**
+- Creates `Run` job with metadata including source and target agent IDs
+- Updates job status throughout execution lifecycle
+- Returns job_id in response for tracking
+- Maintains backward compatibility with async messaging
+
 ### ✅ FIXED: Duplicate Agent Responses Due to Heartbeat Race Condition (2025-08-11)
 **Fixed agent sending duplicate responses when using `send(to="user", request_heartbeat=true)`**
 

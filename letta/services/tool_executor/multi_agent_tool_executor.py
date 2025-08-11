@@ -61,12 +61,15 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
         augmented_message = f"[Broadcast message from agent '{agent_state.id}'] {message}"
 
         tasks = [
-            asyncio.create_task(self._process_agent(agent_id=agent_state.id, message=augmented_message)) for agent_state in matching_agents
+            asyncio.create_task(self._process_agent(agent_id=agent_state.id, message=augmented_message, source_agent_id=agent_state.id)) for agent_state in matching_agents
         ]
         results = await asyncio.gather(*tasks)
         return str(results)
 
-    async def _process_agent(self, agent_id: str, message: str) -> Dict[str, Any]:
+    async def _process_agent(self, agent_id: str, message: str, source_agent_id: Optional[str] = None) -> Dict[str, Any]:
+        """Process agent message by creating a job and running it in the background."""
+        from letta.schemas.run import Run
+        from letta.schemas.enums import JobStatus
         from letta.agents.letta_agent import LettaAgent
         
         # Log and validate agent_id
@@ -80,6 +83,27 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
             agent_id = agent_id[0]
 
         try:
+            # Create a job for tracking the agent message processing
+            run = Run(
+                user_id=self.actor.id,
+                status=JobStatus.created,
+                metadata={
+                    "job_type": "agent_to_agent_message",
+                    "target_agent_id": agent_id,
+                    "source_agent_id": source_agent_id or "unknown",
+                }
+            )
+            run = await self.job_manager.create_job_async(pydantic_job=run, actor=self.actor)
+            logger.info(f"Created job {run.id} for agent-to-agent message to {agent_id}")
+            
+            # Update job status to running
+            await self.job_manager.safe_update_job_status_async(
+                job_id=run.id,
+                new_status=JobStatus.running,
+                actor=self.actor,
+            )
+            
+            # Create and run the agent
             letta_agent = LettaAgent(
                 agent_id=agent_id,
                 message_manager=self.message_manager,
@@ -94,13 +118,33 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
             messages = letta_response.messages
 
             send_message_content = [message.content for message in messages if isinstance(message, AssistantMessage)]
+            
+            # Update job status to completed
+            await self.job_manager.safe_update_job_status_async(
+                job_id=run.id,
+                new_status=JobStatus.completed,
+                actor=self.actor,
+            )
+            logger.info(f"Completed job {run.id} for agent-to-agent message")
 
             return {
                 "agent_id": agent_id,
                 "response": send_message_content if send_message_content else ["<no response>"],
+                "job_id": run.id,
             }
 
         except Exception as e:
+            logger.error(f"Error processing agent message: {e}")
+            # Try to update job status to failed if we created one
+            if 'run' in locals():
+                try:
+                    await self.job_manager.safe_update_job_status_async(
+                        job_id=run.id,
+                        new_status=JobStatus.failed,
+                        actor=self.actor,
+                    )
+                except:
+                    pass  # Ignore errors in error handling
             return {
                 "agent_id": agent_id,
                 "error": str(e),
@@ -123,7 +167,7 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
         # Build the prefixed system message
         prefixed = f"[Message from agent '{agent_state.id}'] {message}"
 
-        task = asyncio.create_task(self._process_agent(agent_id=other_agent_id, message=prefixed))
+        task = asyncio.create_task(self._process_agent(agent_id=other_agent_id, message=prefixed, source_agent_id=agent_state.id))
 
         task.add_done_callback(lambda t: (logger.error(f"Async send_message task failed: {t.exception()}") if t.exception() else None))
 
