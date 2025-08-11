@@ -2,6 +2,47 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: Agent-to-Agent Messaging Resilience (2025-08-11)
+**Made agent messaging resilient to ID format variations and tool execution errors**
+
+**Problem:**
+- Agents crashed when send() received `to="agent-XXX"` instead of `to="agent:XXX"`
+- Tool execution errors stopped heartbeat continuation, deadlocking the system
+- Research agent sending `to="agent-ed6055c1..."` caused ValueError and system hang
+- One slightly malformed tool call could crash the entire agent workflow
+
+**Root Cause:**
+- send() function only accepted strict `"agent:XXX"` format, not the natural `"agent-XXX"`
+- Tool execution manager set `heartbeat_requested=False` on ANY error
+- No error recovery - exceptions propagated up and stopped agent processing
+
+**Solution:**
+1. **Enhanced send() to accept multiple ID formats:**
+   - `"agent-XXX"` (what LLMs naturally try)
+   - `"agent:agent-XXX"` (redundant but technically correct)
+   - `"agent:XXX"` (without prefix after colon)
+   - Raw UUID (auto-prefixes with "agent-")
+
+2. **Made send() resilient to errors:**
+   - Catches exceptions and returns error messages
+   - Prevents agent system from crashing on bad tool calls
+
+3. **Fixed heartbeat continuation after errors:**
+   - Tool errors now preserve original `request_heartbeat` flag
+   - Agents continue processing even when tools fail
+   - Critical for research agents needing to retry/continue
+
+**Files Modified:**
+- `letta/functions/function_sets/multi_agent.py:163-236` - Enhanced send() function
+- `letta/services/tool_executor/tool_execution_manager.py:383-400` - Preserve heartbeat on error
+- `tests/test_agent_id_format_tolerance.py` - Comprehensive test coverage
+- `tests/test_tool_execution_resilience.py` - Error resilience tests
+
+**Impact:**
+- Agent-to-agent messaging now works reliably regardless of ID format
+- System continues operating even when individual tools fail
+- No more deadlocks from malformed tool calls
+
 ### ✅ FIXED: MCP Tools Missing Heartbeat During Startup Refresh (2025-08-11)
 **Fixed critical bug where MCP tools weren't getting request_heartbeat parameter on server startup**
 
