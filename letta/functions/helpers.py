@@ -25,7 +25,16 @@ from letta.settings import settings
 def generate_mcp_tool_wrapper(mcp_tool_name: str) -> tuple[str, str]:
 
     wrapper_function_str = f"""\
-def {mcp_tool_name}(**kwargs):
+def {mcp_tool_name}() -> None:
+    '''MCP tool wrapper - actual execution happens through MCP client.
+    
+    This is a placeholder function. The real MCP tool execution is handled
+    by the MCP client, not this source code. This exists only to satisfy
+    the tool registration system.
+    
+    Returns:
+        Never returns - raises RuntimeError if executed
+    '''
     raise RuntimeError("Something went wrong - we should never be using the persisted source code for MCP. Please reach out to Letta team")
 """
 

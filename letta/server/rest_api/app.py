@@ -187,11 +187,20 @@ async def lifespan(app_: FastAPI):
                 try:
                     new_schema = None
                     
-                    if tool.source_code:
-                        # For tools with source code, regenerate schema from source
+                    # Check if this is an MCP tool - they have dummy source_code that shouldn't be used
+                    from letta.orm.enums import ToolType
+                    if tool.tool_type == ToolType.EXTERNAL_MCP:
+                        # For MCP tools, preserve the existing schema and just ensure heartbeat is present
+                        # MCP tools have source_code but it's just a dummy wrapper function
+                        if tool.json_schema:
+                            import copy
+                            schema_copy = copy.deepcopy(tool.json_schema)
+                            new_schema = ensure_heartbeat_in_schema(schema_copy)
+                    elif tool.source_code:
+                        # For non-MCP tools with source code, regenerate schema from source
                         new_schema = derive_openai_json_schema(source_code=tool.source_code, name=tool.name)
                     elif tool.json_schema:
-                        # For tools without source code (like MCP tools), just ensure heartbeat is present
+                        # For tools without source code, just ensure heartbeat is present
                         # Make a copy to avoid modifying the original
                         import copy
                         schema_copy = copy.deepcopy(tool.json_schema)
