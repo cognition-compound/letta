@@ -168,7 +168,9 @@ def send(self: "Agent", message: str, to: str) -> str:
         message (str): The content of the message to send.
         to (str): Target specification:
             - "user" - sends to the human user
-            - "agent:<agent_id>" - sends to a specific agent
+            - "agent:<agent_id>" - sends to a specific agent (e.g., "agent:agent-123" or "agent:123")
+            - "agent-<uuid>" - direct agent ID format (e.g., "agent-123")
+            - "<uuid>" - raw UUID, will be auto-prefixed with "agent-"
             - "group:<group_id>" - sends to all agents in a group
             - "broadcast:<tag>" - sends to all agents with the specified tag
 
@@ -178,40 +180,57 @@ def send(self: "Agent", message: str, to: str) -> str:
     Examples:
         - send("Hello!", to="user") - Send to human user
         - send("Status update", to="agent:agent-123") - Async message to agent
+        - send("Status update", to="agent-123") - Also works (direct agent ID)
         - send("Alert", to="broadcast:critical") - Broadcast to all agents with 'critical' tag
     """
-    if to == "user":
-        # Import here to avoid circular dependencies
-        from letta.functions.function_sets.base import send_message
+    try:
+        if to == "user":
+            # Import here to avoid circular dependencies
+            from letta.functions.function_sets.base import send_message
 
-        send_message(self, message)
-        return "Message sent to user"
+            send_message(self, message)
+            return "Message sent to user"
 
-    elif to.startswith("agent:"):
-        agent_id = to.split(":", 1)[1]
-        # Check if the agent_id is a UUID without the "agent-" prefix
-        if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', agent_id, re.IGNORECASE):
-            # If it's a UUID, prepend "agent-" since Letta expects "agent-<uuid>" format
-            agent_id = f"agent-{agent_id}"
-        return send_message_to_agent_async(self, message, agent_id)
+        elif to.startswith("agent:"):
+            # Handle "agent:XXX" format
+            agent_id = to.split(":", 1)[1]
+            # Check if the agent_id is a UUID without the "agent-" prefix
+            if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', agent_id, re.IGNORECASE):
+                # If it's a UUID, prepend "agent-" since Letta expects "agent-<uuid>" format
+                agent_id = f"agent-{agent_id}"
+            # agent_id could already have "agent-" prefix (e.g., "agent:agent-123")
+            # That's fine, send_message_to_agent_async will handle it
+            return send_message_to_agent_async(self, message, agent_id)
 
-    elif to.startswith("group:"):
-        group_id = to.split(":", 1)[1]
-        # Fixed: Now actually sends to the specified group instead of sender's group
-        responses = send_message_to_specific_group(self, message, group_id)
-        return f"Message sent to {len(responses)} agents in group {group_id}"
+        elif to.startswith("agent-"):
+            # Handle "agent-XXX" format directly (what LLMs naturally try)
+            # This is already the correct format for Letta
+            return send_message_to_agent_async(self, message, to)
 
-    elif to.startswith("broadcast:"):
-        tag = to.split(":", 1)[1]
-        responses = send_message_to_agents_matching_tags(self, message, match_all=[tag], match_some=[])
-        return f"Message broadcasted to {len(responses)} agents with tag '{tag}'"
+        elif to.startswith("group:"):
+            group_id = to.split(":", 1)[1]
+            # Fixed: Now actually sends to the specified group instead of sender's group
+            responses = send_message_to_specific_group(self, message, group_id)
+            return f"Message sent to {len(responses)} agents in group {group_id}"
 
-    elif re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", to, re.IGNORECASE):
-        # Looks like a UUID, prepend "agent-" and treat as agent ID
-        agent_id = f"agent-{to}"
-        return send_message_to_agent_async(self, message, agent_id)
+        elif to.startswith("broadcast:"):
+            tag = to.split(":", 1)[1]
+            responses = send_message_to_agents_matching_tags(self, message, match_all=[tag], match_some=[])
+            return f"Message broadcasted to {len(responses)} agents with tag '{tag}'"
 
-    else:
-        raise ValueError(
-            f"Invalid 'to' parameter: {to}. Must be 'user', 'agent:<id>', 'group:<id>', 'broadcast:<tag>', or a UUID (which will be auto-prefixed with 'agent-')"
-        )
+        elif re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", to, re.IGNORECASE):
+            # Looks like a raw UUID, prepend "agent-" and treat as agent ID
+            agent_id = f"agent-{to}"
+            return send_message_to_agent_async(self, message, agent_id)
+
+        else:
+            raise ValueError(
+                f"Invalid 'to' parameter: {to}. Must be 'user', 'agent:<id>', 'agent-<uuid>', 'group:<id>', 'broadcast:<tag>', or a raw UUID"
+            )
+    
+    except Exception as e:
+        # Log the error but don't crash the entire system
+        self.logger.error(f"Error in send() function: {e}")
+        # Return error message instead of raising exception
+        # This prevents the agent from crashing on bad tool calls
+        return f"Error sending message: {str(e)}"

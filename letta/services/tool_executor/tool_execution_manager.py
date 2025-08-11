@@ -380,13 +380,24 @@ class ToolExecutionManager:
                 stderr=[traceback.format_exc()],
             )
 
+            # Try to parse heartbeat from the original tool call even on error
+            # This prevents the system from hanging when a tool fails but requested continuation
+            heartbeat_on_error = False
+            try:
+                error_tool_args = _safe_load_tool_call_str(tool_call.function.arguments)
+                heartbeat_on_error = error_tool_args.get("request_heartbeat", False)
+                self.logger.debug(f"Tool {tool_name} failed but had request_heartbeat={heartbeat_on_error}")
+            except:
+                # If we can't parse args, default to False
+                pass
+            
             return ParallelToolCallResult(
                 tool_call_id=tool_call_id,
                 tool_call=tool_call,
                 execution_result=error_result,
                 execution_time_ms=execution_time_ms,
                 error=str(e),
-                heartbeat_requested=False,  # Failed tools don't request heartbeat
+                heartbeat_requested=heartbeat_on_error,  # Preserve heartbeat even on failure to prevent hanging
             )
 
     async def _execute_tools_sequentially(
