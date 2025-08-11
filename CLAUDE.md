@@ -239,3 +239,4 @@ LETTA_ENABLE_PARALLEL_TOOL_CALLS="true"  # Enable parallel tool execution (defau
 - **No backwards compatibility**: We can break things if needed
 - **Reproduce bugs**: When analysing issues, **ALWAYS** reproduce them by creating a (failing) test case in the test suite as very first step.
 - **Document discoveries**: Update @current_progress.md as you learn new things. **ALWAYS** Review and compact existing entries as you learn more about the system.
+- **NEVER** use inline imports - group all imports at the top of the file.
