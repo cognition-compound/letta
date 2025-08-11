@@ -2,6 +2,55 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: MCP Tools Missing Heartbeat During Startup Refresh (2025-08-11)
+**Fixed critical bug where MCP tools weren't getting request_heartbeat parameter on server startup**
+
+**Problem:**
+- MCP tools still lacked `request_heartbeat` parameter even after deployment and restart
+- Tools created via API with custom schemas bypassed heartbeat injection
+- Startup refresh only processed tools with `source_code`, excluding MCP tools
+
+**Root Cause:**
+- Startup refresh code checked `if tool.source_code:` before processing (line 186 in app.py)
+- MCP tools only have `json_schema`, not `source_code`
+- This meant existing MCP tools in database never got heartbeat added during startup
+- Only NEW MCP tools or UPDATED tools would get heartbeat via our previous fixes
+
+**Solution:**
+- Modified startup refresh to handle both types of tools:
+  - Tools WITH source_code: regenerate from source (existing behavior)
+  - Tools WITHOUT source_code but WITH json_schema (like MCP tools): inject heartbeat into existing schema
+- Used `ensure_heartbeat_in_schema()` helper for MCP tools
+- Deep copy schema to avoid modifying original in-memory object
+
+**Files Modified:**
+- `letta/server/rest_api/app.py:186-210` - Enhanced startup refresh to handle MCP tools
+- `tests/test_mcp_tools_startup_refresh.py` - Added comprehensive tests
+
+**Impact:**
+- MCP tools now properly get `request_heartbeat` parameter when server starts
+- No need to manually recreate or update MCP tools
+- Fixes the issue observed in staging environment
+
+### ✅ FIXED: API Tools Missing Heartbeat in Custom Schemas (2025-08-11)
+**Fixed tools created/updated via API with custom schemas bypassing heartbeat injection**
+
+**Problem:**
+- Tools created via REST API with custom json_schema lacked heartbeat parameter
+- Custom schemas were used as-is without modification
+- Only tools generated from source code got heartbeat
+
+**Solution:**
+- Created `ensure_heartbeat_in_schema()` helper function in tool_manager.py
+- Integrated into `create_tool()` and `update_tool_by_id()` methods
+- Modifies schemas in-place to add heartbeat if missing
+
+**Files Modified:**
+- `letta/services/tool_manager.py:44-79` - Added ensure_heartbeat_in_schema helper
+- `letta/services/tool_manager.py:211-212, 231-232` - Modified create_tool methods
+- `letta/services/tool_manager.py:457-458, 491-492` - Modified update_tool methods  
+- `tests/test_api_tools_heartbeat.py` - Added comprehensive tests
+
 ### ✅ FIXED: Missing request_heartbeat Parameter in Tool Schemas (2025-08-11)
 **Fixed tool schemas missing the request_heartbeat parameter**
 
