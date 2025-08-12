@@ -885,11 +885,11 @@ class Message(BaseMessage):
                             if isinstance(reasoning_obj, dict):
                                 # Check if it's our complete reasoning structure format
                                 if "output_reasoning" in reasoning_obj and "metadata" in reasoning_obj:
-                                    # This is our complete reasoning structure - reconstruct COMPLETE reasoning for OpenAI
-                                    # The model needs its full reasoning context back, not just metadata
+                                    # This is our complete reasoning structure - send back EXACTLY as detailed and precise as possible
+                                    # Send the full reasoning structure back to OpenAI in the exact same format they sent it
                                     openai_message["reasoning"] = reasoning_obj
                                 elif "metadata" in reasoning_obj:
-                                    # Minimal case: only metadata, no reasoning items - still reconstruct complete structure
+                                    # Minimal case: only metadata, no reasoning items - send complete structure
                                     openai_message["reasoning"] = reasoning_obj
                                 elif "output_reasoning_items" in reasoning_obj:
                                     # Legacy format from old serialization - keep as reasoning_content
