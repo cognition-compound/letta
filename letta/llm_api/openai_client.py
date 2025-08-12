@@ -486,30 +486,115 @@ class OpenAIClient(LLMClientBase):
 
         return None
 
+    def _extract_reasoning_content_and_summary(self, response_data: dict) -> tuple[Optional[str], Optional[str]]:
+        """Extract actual reasoning content and summary from OpenAI Responses API.
+        
+        This method looks for the actual reasoning content and summary, not just metadata.
+        It prioritizes actual content over summary but returns both if available.
+        
+        Args:
+            response_data: Raw response data from Responses API
+            
+        Returns:
+            Tuple of (reasoning_content, reasoning_summary)
+            - reasoning_content: The full reasoning text if available 
+            - reasoning_summary: The reasoning summary if available
+        """
+        reasoning_content = None
+        reasoning_summary = None
+        
+        # First, check for reasoning items in output (contains the actual reasoning content)
+        output_items = response_data.get("output", [])
+        for item in output_items:
+            if item.get("type") == "reasoning":
+                # Extract content field - this contains the actual reasoning
+                content = item.get("content")
+                if content:
+                    if isinstance(content, list):
+                        # Content is array of content items, extract text
+                        content_texts = []
+                        for content_item in content:
+                            if isinstance(content_item, dict) and content_item.get("type") == "reasoning_text":
+                                text = content_item.get("text", "")
+                                if text:
+                                    content_texts.append(text)
+                        if content_texts:
+                            reasoning_content = "".join(content_texts)
+                    elif isinstance(content, str):
+                        # Content is direct string
+                        reasoning_content = content
+                
+                # Extract summary field - this contains the reasoning summary
+                summary = item.get("summary")
+                if summary:
+                    if isinstance(summary, list):
+                        # Summary is array of content items, extract text
+                        summary_texts = []
+                        for summary_item in summary:
+                            if isinstance(summary_item, dict) and summary_item.get("type") == "summary_text":
+                                text = summary_item.get("text", "")
+                                if text:
+                                    summary_texts.append(text)
+                        if summary_texts:
+                            reasoning_summary = "".join(summary_texts)
+                    elif isinstance(summary, str):
+                        # Summary is direct string
+                        reasoning_summary = summary
+                        
+                # If we found reasoning items, use the first one (OpenAI typically returns one)
+                break
+        
+        # Fallback: check for summary in top-level reasoning metadata
+        if not reasoning_summary and not reasoning_content:
+            top_reasoning = response_data.get("reasoning", {})
+            if isinstance(top_reasoning, dict):
+                metadata_summary = top_reasoning.get("summary")
+                if metadata_summary and isinstance(metadata_summary, str):
+                    reasoning_summary = metadata_summary
+        
+        return reasoning_content, reasoning_summary
+
     def _process_reasoning_content(self, chat_completion_response: ChatCompletionResponse, response_data: dict):
         """Process reasoning content for reasoning models.
 
         This method:
-        1. Serializes the entire reasoning object for exact preservation
-        2. Sets omitted flag when reasoning is present but not readable
+        1. Extracts actual reasoning content and summary from response
+        2. Stores the content in reasoning_content field for ReasoningMessage creation
+        3. Preserves the complete reasoning object for round-trip fidelity
         """
         if not chat_completion_response.choices:
             return
 
         message = chat_completion_response.choices[0].message
 
-        # Always serialize the complete reasoning object for preservation
-        serialized_reasoning = self._serialize_reasoning_for_preservation(response_data)
-        if serialized_reasoning:
-            # Store serialized reasoning in reasoning_content field
-            message.reasoning_content = serialized_reasoning
-            # Set omitted flag since reasoning content is serialized/not directly readable
-            message.omitted_reasoning_content = True
-            logger.debug(f"[REASONING] Preserved reasoning object ({len(serialized_reasoning)} chars) - set omitted flag")
+        # Extract actual reasoning content and summary
+        reasoning_content, reasoning_summary = self._extract_reasoning_content_and_summary(response_data)
+        
+        # Decide what to put in reasoning_content field based on what's available
+        if reasoning_content:
+            # Use the actual reasoning content (preferred)
+            message.reasoning_content = reasoning_content
+            logger.debug(f"[REASONING] Using actual reasoning content ({len(reasoning_content)} chars)")
+        elif reasoning_summary:
+            # Fall back to reasoning summary if no full content
+            message.reasoning_content = reasoning_summary
+            logger.debug(f"[REASONING] Using reasoning summary ({len(reasoning_summary)} chars)")
         else:
-            # No reasoning data at all - still set omitted flag for reasoning models
+            # Fall back to serialized reasoning metadata as last resort
+            serialized_reasoning = self._serialize_reasoning_for_preservation(response_data)
+            if serialized_reasoning:
+                message.reasoning_content = serialized_reasoning
+                logger.debug(f"[REASONING] Using serialized reasoning metadata ({len(serialized_reasoning)} chars)")
+        
+        # Set omitted flag appropriately
+        if reasoning_content:
+            # We have actual readable content - don't set omitted flag
+            message.omitted_reasoning_content = False
+            logger.debug("[REASONING] Actual content available - omitted flag set to False")
+        else:
+            # Either summary or serialized metadata - set omitted flag
             message.omitted_reasoning_content = True
-            logger.debug(f"[REASONING] No reasoning data found - set omitted flag")
+            logger.debug("[REASONING] Only summary/metadata available - omitted flag set to True")
 
     @trace_method
     def build_request_data(

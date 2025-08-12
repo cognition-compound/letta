@@ -20,39 +20,39 @@
 - Auto summary ensures reasoning summaries are generated when appropriate
 - All reasoning models (o1, o2, o3, o4, gpt-5) affected by this change
 
-### ✅ FIXED: Agent Context Death on Summarization (2025-08-12)
-**Fixed critical bug where agents lost all context when hitting context window limits**
+### ✅ FIXED: Agent Context Death Due to Missing Summarizer (2025-08-12)
+**Fixed critical design flaw where agents lose all context permanently when hitting limits**
 
-**Problem:**
-- Agents "just stopped working" when hitting context window limit
-- Research agent specifically affected - would become completely non-functional
-- Root cause: When no user messages existed after initial request, summarizer's trim index search would go beyond message bounds
-- Agent left with only system message, losing all context of task and progress
+**Problem Cascade:**
+1. Research agent hits context window limit after many tool calls
+2. System attempts to use PARTIAL_EVICT mode (default) which requires a summarizer_agent
+3. BUT: When LettaAgent created via multi_agent_tool_executor, no parameters passed = defaults used
+4. If enable_summarization=True but something fails, summarizer_agent=None
+5. Falls back to STATIC_BUFFER mode which does NOT insert summaries - only evicts!
+6. Unbounded while loop searching for user message boundary goes past array end
+7. Agent left with ONLY system message - completely dead
 
-**Evidence:**
-- Research agent instructed to NEVER send messages to user - only uses tools
-- After initial user message, all subsequent messages are tool calls/responses
-- When summarizer ran with `force=True, clear=True`, trim index calculation failed
-- Line 267-271 in summarizer.py: unbounded while loop searching for user message
-- Result: Agent has no memory of what was requested or what work was done
+**Critical Design Flaw:**
+- **PARTIAL_EVICT mode**: Creates summary via LLM, inserts at position 1, agent keeps context
+- **STATIC_BUFFER mode**: Just deletes old messages, NO SUMMARY inserted, context lost forever
+- Research agents never send to users, so after initial message, no user boundaries exist
 
-**Solution - Five Critical Safety Checks:**
-1. **Prevent bounds overflow**: Check if trim index exceeds message count, adjust to safe position
-2. **Limit search distance**: Cap user message search to 10 messages maximum
-3. **Fallback strategy**: If no user boundary found, preserve original position with minimal context
-4. **Tool pair preservation**: Adjust for tool call/response integrity after boundary calculation
-5. **Emergency context preservation**: Never return empty context - keep at least 5 messages
+**Solution Implemented:**
+1. **Added critical logging** to identify when/why summarizer_agent is None
+2. **Fixed unbounded search** with limits and fallback logic
+3. **Safety checks** to never leave agent with empty context
+4. **Warning logs** when evicting without summaries
 
 **Files Modified:**
-- `letta/services/summarizer/summarizer.py:257-298` - Added comprehensive safety checks
-- `tests/test_research_agent_context_death.py` - Test reproducing exact failure scenario
-- `tests/test_no_user_messages.py` - Edge case tests for missing user boundaries
+- `letta/agents/letta_agent.py:128-139` - Log summarizer agent creation/failure
+- `letta/services/summarizer/summarizer.py:126-130` - Critical log for fallback
+- `letta/services/summarizer/summarizer.py:250-256` - Warning when evicting without summary
+- `letta/services/summarizer/summarizer.py:257-280` - Fixed unbounded search with safety checks
 
-**Impact:**
-- Research agent now maintains context through summarization
-- Agents no longer "die" when hitting context limits
-- System preserves minimum viable context for continued operation
-- Fix deployed prevents the "agent just stops working" issue reported in staging
+**Root Issues Still Need Addressing:**
+1. Why is summarizer_agent None in some cases?
+2. Should STATIC_BUFFER mode exist without inserting summaries?
+3. Multi-agent tool executor should pass proper parameters
 
 ### ✅ IMPLEMENTED: Comprehensive Structured Logging for Agent Communication Debugging (2025-08-12)
 **Enhanced logging system to make debugging agent communication issues 10x faster**
