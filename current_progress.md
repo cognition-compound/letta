@@ -2,54 +2,67 @@
 
 ## 🚀 Recent Updates
 
-### ✅ FIXED: OpenAI Reasoning Content Extraction and Round-Trip Conversion (2025-08-12)
-**Fixed critical issue where ReasoningMessage received JSON metadata instead of actual reasoning content**
+### ✅ FIXED: Complete Reasoning Architecture - Full OpenAI Context Preservation (2025-08-12)
+**Fixed critical reasoning display and model continuity issues by implementing complete reasoning serialization**
 
 **Problem:**
-- `ReasoningMessage.reasoning` contained: `{"effort":"minimal","summary":"auto"}` (metadata)
-- Instead of actual reasoning: `"Let me think step by step. First, I need to..."`
-- Round-trip conversion failed: actual text couldn't be converted back to proper OpenAI `reasoning` field
+- ReasoningMessage displayed JSON metadata `{"effort":"minimal","generate_summary":null,"summary":"detailed"}` instead of actual reasoning
+- OpenAI models received incomplete reasoning context, causing confusion and weird behavior
+- Round-trip conversion only preserved metadata, completely lost reasoning content and summary items
 
 **Root Cause:**
-- OpenAI Responses API returns reasoning in two places:
-  - `reasoning` field: metadata like `{"effort": "minimal"}`  
-  - `output[].type="reasoning"`: actual content and summary
-- Our code was serializing the metadata instead of extracting the actual content
-- When converting back to OpenAI, actual text went to wrong field (`reasoning_content` vs `reasoning`)
+- We were only serializing the top-level `reasoning` field (metadata) from OpenAI Responses API
+- Actual reasoning content lives in the `output` array as items with `type: "reasoning"`
+- When sending back to OpenAI, we only reconstructed metadata, not the complete structure
+- Model lost access to its detailed thinking process from previous turns
 
-**Complete Solution:**
-1. **Added content extraction**: `_extract_reasoning_content_and_summary()` extracts actual reasoning text
-2. **Dual storage approach**: 
-   - `reasoning_content`: Actual readable text (for ReasoningMessage display)
-   - `reasoning_content_signature`: Serialized reasoning object (for round-trip OpenAI conversion)
-3. **Fixed content type detection**: Summary uses `summary_text` not `reasoning_text`
-4. **Updated round-trip conversion**: Prioritizes signature field for OpenAI `reasoning` object reconstruction
+**Solution Implemented:**
+1. **Complete Structure Serialization**: Serialize ENTIRE reasoning structure from OpenAI Responses API:
+   - `output_reasoning`: Array of reasoning items with content and summary
+   - `metadata`: Top-level reasoning configuration (effort, summary settings)
+
+2. **Full Context Reconstruction**: When converting back to OpenAI format, reconstruct complete reasoning structure:
+   - Complex cases: Full structure with both reasoning items and metadata
+   - Minimal cases: Metadata-only structure (when no reasoning items exist)
+
+3. **Round-Trip Fidelity**: Ensure OpenAI models receive exactly what they need for reasoning continuity
 
 **Files Modified:**
-- `letta/llm_api/openai_client.py:489-597` - Added content extraction and dual storage
-- `letta/schemas/message.py:877-920` - Updated round-trip conversion logic
-
-**Testing:**
-- ✅ Extracts actual reasoning: "I need to think about this carefully..."
-- ✅ Preserves original object: `{"effort":"minimal","summary":"auto"}`
-- ✅ ReasoningMessage gets readable text for display/debugging
-- ✅ OpenAI conversion reconstructs proper `reasoning` field structure
-- ✅ Fallback chain: full content → summary → metadata summary
-- ✅ All edge cases handled (summary-only responses, etc.)
+- `letta/llm_api/openai_client.py:669` - Enhanced `_serialize_complete_reasoning_structure()` to capture full context
+- `letta/schemas/message.py:890-893` - Fixed round-trip conversion to reconstruct complete reasoning field
 
 **Impact:**
-- ReasoningMessage now shows actual reasoning content instead of JSON metadata
-- Perfect round-trip fidelity for OpenAI conversations
-- Agents now have transparent reasoning visibility
-- Maintains backward compatibility with existing messages
+- ✅ Frontend now displays actual reasoning content instead of config metadata
+- ✅ OpenAI models receive their complete reasoning context back
+- ✅ Proper reasoning continuity across conversation turns  
+- ✅ No more model confusion from incomplete reasoning data
+- ✅ Architecture handles both complex reasoning and minimal effort cases
 
-**⚠️ CRITICAL FIX: Removed Abuse of Signature Field (2025-08-12)**
-- Fixed critical design flaw where `reasoning_content_signature` was polluted with OpenAI JSON data
-- `reasoning_content_signature` is meant for actual signatures (Anthropic), not serialized OpenAI objects
-- Removed improper storage of reasoning metadata in signature field
-- Now only stores actual reasoning content/summary in `reasoning_content` field
-- Clean field usage: no more sending random JSON back to OpenAI in signature field
-- Frontend will show actual reasoning when available, nothing when not (correct behavior)
+**Technical Architecture:**
+```json
+// What we serialize and store:
+{
+  "output_reasoning": [
+    {
+      "type": "reasoning",
+      "content": [{"type": "reasoning_text", "text": "I need to analyze..."}],
+      "summary": [{"type": "summary_text", "text": "User wants weather info"}]
+    }
+  ],
+  "metadata": {
+    "effort": "high",
+    "summary": "auto",
+    "generate_summary": true
+  }
+}
+
+// What OpenAI gets back (complete structure):
+{
+  "reasoning": { /* complete structure above */ }
+}
+```
+
+This fixes the fundamental issue where models couldn't access their previous reasoning, ensuring proper OpenAI Responses API compliance.
 
 ### ✅ UPDATED: OpenAI Reasoning Model Settings (2025-08-12)
 **Changed GPT-5 reasoning parameters to use minimal effort with auto summaries**
