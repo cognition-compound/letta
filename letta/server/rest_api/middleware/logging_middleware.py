@@ -67,6 +67,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         # Generate unique request ID for correlation
         request_id = str(uuid.uuid4())
         request.state.request_id = request_id
+        
+        # Generate workflow ID for multi-agent correlation
+        workflow_id = str(uuid.uuid4())
+        request.state.workflow_id = workflow_id
 
         # Start timing
         start_time = time.time()

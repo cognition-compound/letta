@@ -337,6 +337,26 @@ class ToolExecutionManager:
             tool_args = _safe_load_tool_call_str(tool_call.function.arguments)
             heartbeat_requested = _pop_heartbeat(tool_args)  # Remove heartbeat from args and capture its value
             tool_args.pop(INNER_THOUGHTS_KWARG, None)  # Remove thinking from args
+            
+            # Business Flow Event: Tool execution starting with context
+            # Sanitize args for logging (truncate strings, show structure)
+            sanitized_args = {}
+            for k, v in tool_args.items():
+                if isinstance(v, str):
+                    sanitized_args[k] = v[:100] + "..." if len(v) > 100 else v
+                else:
+                    sanitized_args[k] = str(v)[:50] + "..." if len(str(v)) > 50 else v
+                    
+            self.logger.info("Tool execution context", extra={
+                "event": "tool_execution_context",
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "agent_id": agent_state.id,
+                "tool_args": sanitized_args,
+                "heartbeat_requested": heartbeat_requested,
+                "step_id": step_id,
+                "execution_mode": "parallel"
+            })
 
             # Execute the tool
             execution_result = await self.execute_tool_async(
@@ -351,9 +371,25 @@ class ToolExecutionManager:
 
             # Special case: send(to="user") should never trigger heartbeat continuation
             # The message to the user IS the response - there's nothing to continue
+            heartbeat_override = False
             if tool_name == "send" and tool_args.get("to") == "user":
                 heartbeat_requested = False
+                heartbeat_override = True
                 self.logger.debug(f"Forcing heartbeat=False for send(to='user') to prevent duplicate responses")
+
+            # Business Flow Event: Tool execution completed
+            self.logger.info("Tool execution completed", extra={
+                "event": "tool_execution_complete",
+                "tool_name": tool_name,
+                "tool_call_id": tool_call_id,
+                "agent_id": agent_state.id,
+                "success": execution_result.success_flag,
+                "execution_time_ms": execution_time_ms,
+                "heartbeat_requested": heartbeat_requested if execution_result.success_flag else False,
+                "heartbeat_override": heartbeat_override,
+                "step_id": step_id,
+                "result_summary": str(execution_result.func_return)[:100] if execution_result.func_return else "No result"
+            })
 
             return ParallelToolCallResult(
                 tool_call_id=tool_call_id,

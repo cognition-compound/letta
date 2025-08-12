@@ -406,6 +406,43 @@ class LettaAgent(BaseAgent):
             3. Fetches a response from the LLM
             4. Processes the response
         """
+        # Extract input context for business logging
+        input_summary = None
+        if input_messages:
+            first_message = input_messages[0]
+            if hasattr(first_message, 'content') and first_message.content:
+                content_text = ""
+                for content_item in first_message.content:
+                    if hasattr(content_item, 'text'):
+                        content_text += content_item.text
+                input_summary = content_text[:200] if content_text else "No text content"
+        
+        # Business Flow Event: Agent step started
+        # Try to get correlation IDs from current context (if available from request)
+        correlation_context = {}
+        try:
+            # These would be set by middleware or passed through context
+            import contextvars
+            request_id_var = contextvars.ContextVar('request_id', default=None)
+            workflow_id_var = contextvars.ContextVar('workflow_id', default=None)
+            correlation_context.update({
+                "correlation_id": request_id_var.get(),
+                "workflow_id": workflow_id_var.get()
+            })
+        except:
+            pass  # Context variables not available, continue without them
+            
+        self.logger.info("Agent step workflow started", extra={
+            "event": "agent_step_start",
+            "agent_id": agent_state.id,
+            "agent_name": agent_state.name,
+            "input_summary": input_summary,
+            "max_steps": max_steps,
+            "run_id": run_id,
+            "dry_run": dry_run,
+            "workflow_type": "agent_processing",
+            **correlation_context
+        })
         current_in_context_messages, new_in_context_messages = await _prepare_in_context_messages_no_persist_async(
             input_messages, agent_state, self.message_manager, self.actor
         )
@@ -486,6 +523,18 @@ class LettaAgent(BaseAgent):
                 reasoning = None
 
             # Handle single vs multiple tool calls
+            # Business Flow Event: Tool execution starting
+            tool_names = [tc.function.name for tc in tool_calls]
+            self.logger.info("Tool execution phase starting", extra={
+                "event": "tool_execution_start",
+                "agent_id": agent_state.id,
+                "step_number": i + 1,
+                "step_id": step_id,
+                "tool_count": len(tool_calls),
+                "tool_names": tool_names,
+                "execution_mode": "single" if len(tool_calls) == 1 else "parallel"
+            })
+
             if len(tool_calls) == 1:
                 # Single tool call - use existing path for backwards compatibility
                 persisted_messages, should_continue, stop_reason = await self._handle_ai_response(
@@ -516,6 +565,36 @@ class LettaAgent(BaseAgent):
                     step_id=step_id,
                     run_id=run_id,
                 )
+
+            # Business Flow Event: Step decision made
+            self.logger.info("Agent step decision made", extra={
+                "event": "step_decision", 
+                "agent_id": agent_state.id,
+                "step_number": i + 1,
+                "step_id": step_id,
+                "should_continue": should_continue,
+                "stop_reason": stop_reason.stop_reason if stop_reason else None,
+                "is_final_step": (i == max_steps - 1),
+                "workflow_status": "continuing" if should_continue else "stopping"
+            })
+            
+            # Workflow checkpoint tracking
+            if should_continue and i + 1 < max_steps:
+                try:
+                    from letta.log.workflow_tracker import WorkflowTracker
+                    WorkflowTracker.log_workflow_checkpoint(
+                        checkpoint_name="step_completed_continuing",
+                        agent_id=agent_state.id,
+                        step_number=i + 1,
+                        max_steps=max_steps,
+                        additional_context={
+                            "step_id": step_id,
+                            "tools_executed": tool_names,
+                            "reason_for_continuation": "heartbeat_requested"
+                        }
+                    )
+                except ImportError:
+                    pass  # Workflow tracker not available
             new_message_idx = len(initial_messages) if initial_messages else 0
             self.response_messages.extend(persisted_messages[new_message_idx:])
             new_in_context_messages.extend(persisted_messages[new_message_idx:])
@@ -566,6 +645,22 @@ class LettaAgent(BaseAgent):
                 total_tokens=usage.total_tokens,
                 force=False,
             )
+
+        # Business Flow Event: Agent step workflow completed
+        duration_ms = ns_to_ms(get_utc_timestamp_ns() - (request_start_timestamp_ns or 0)) if request_start_timestamp_ns else None
+        self.logger.info("Agent step workflow completed", extra={
+            "event": "agent_step_complete",
+            "agent_id": agent_state.id,
+            "agent_name": agent_state.name,
+            "run_id": run_id,
+            "total_steps": usage.step_count,
+            "stop_reason": stop_reason.stop_reason if stop_reason else "max_steps_reached",
+            "total_tokens": usage.total_tokens,
+            "completion_tokens": usage.completion_tokens, 
+            "prompt_tokens": usage.prompt_tokens,
+            "duration_ms": duration_ms,
+            "workflow_status": "completed"
+        })
 
         return current_in_context_messages, new_in_context_messages, stop_reason, usage
 

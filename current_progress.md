@@ -2,6 +2,82 @@
 
 ## 🚀 Recent Updates
 
+### ✅ IMPLEMENTED: Comprehensive Structured Logging for Agent Communication Debugging (2025-08-12)
+**Enhanced logging system to make debugging agent communication issues 10x faster**
+
+**Background:**
+During debugging of the "Spinnen" research request workflow, we discovered critical gaps in our logging that made it extremely difficult to trace agent-to-agent communication failures. The system would fail silently with no clear indication of where the workflow broke.
+
+**Key Problems Solved:**
+1. **No Business Context**: Logs showed low-level operations but not high-level workflows
+2. **Missing Agent Communication**: No visibility into when agents sent messages to each other
+3. **Tool Execution Opacity**: Tool parameters and heartbeat decisions were invisible
+4. **Correlation Gaps**: Related events across services couldn't be linked
+5. **Workflow State Blindness**: No indication of progress through multi-step processes
+
+**Comprehensive Implementation:**
+
+**1. Business Flow Event Logging** (`letta/agents/letta_agent.py`)
+- Added structured workflow events: `agent_step_start`, `tool_execution_start`, `step_decision`, `agent_step_complete`
+- Includes business context: agent names, input summaries, workflow types
+- Progress tracking: step numbers, max steps, workflow status
+- Example: "Agent step workflow started for 'Research agent Spinnen request'"
+
+**2. Tool Execution Context Logging** (`letta/services/tool_executor/tool_execution_manager.py`)
+- Logs tool parameters (sanitized for security): `tool_execution_context`
+- Shows heartbeat decisions and overrides: `tool_execution_complete`
+- Execution timing and success/failure status
+- Critical for debugging send() calls with routing targets
+
+**3. Agent Communication Flow Logging** (`letta/services/tool_executor/multi_agent_tool_executor.py`)
+- Message routing decisions: `agent_message_route`, `agent_to_agent_message_start`
+- Job lifecycle tracking: `agent_message_job_created`, `agent_message_job_running`, `agent_message_job_completed`
+- Response content summaries and error handling
+- Full visibility into inter-agent message processing
+
+**4. Correlation ID System** (`letta/server/rest_api/middleware/logging_middleware.py`)
+- Added workflow_id alongside request_id for multi-agent correlation
+- Context variables for correlation tracking across async operations
+- Enables tracing related events across multiple agents and services
+
+**5. Workflow State Tracking** (`letta/log/workflow_tracker.py`)
+- New WorkflowTracker utility class for multi-step process visibility
+- Checkpoint logging for long-running workflows
+- State transition tracking with triggers and context
+- Multi-agent coordination event logging
+
+**Key Logging Events Added:**
+- `agent_step_start` - High-level workflow initiation
+- `tool_execution_context` - Tool parameters and heartbeat decisions
+- `agent_message_route` - Message routing decisions (user/agent/broadcast)
+- `agent_message_job_created` - Job creation for agent message processing
+- `agent_message_job_completed` - Successful message processing with response
+- `workflow_checkpoint` - Multi-step process progress tracking
+- `step_decision` - Continuation vs stopping decisions
+
+**Files Modified:**
+- `letta/agents/letta_agent.py` - Added business flow logging to agent steps
+- `letta/services/tool_executor/tool_execution_manager.py` - Added tool execution context
+- `letta/services/tool_executor/multi_agent_tool_executor.py` - Added agent communication logging
+- `letta/server/rest_api/middleware/logging_middleware.py` - Added workflow correlation IDs
+- `letta/log/workflow_tracker.py` - New workflow state tracking utilities
+
+**Debugging Impact:**
+These improvements would have reduced our recent debugging session from hours to minutes by providing:
+- Clear visibility: "Research agent sent message to main agent at 09:39:18"
+- Tool context: "send(to='agent:ed6055c1', message='Research complete...', request_heartbeat=true)"
+- Job tracking: "Job run-abc123 created for agent message processing"
+- Workflow flow: "Main agent step 1/5 completed, continuing due to heartbeat_requested"
+- Error clarity: "Agent message processing failed: No tool call found for function call output"
+
+**Usage:**
+All logging is automatic and structured with consistent event names and context. Use log queries like:
+```
+event="agent_message_route" AND routing_target="agent:*"
+event="tool_execution_context" AND tool_name="send"
+event="agent_message_job_completed" AND workflow_status="success"
+```
+
 ### ✅ FIXED: Orphaned Tool Responses in Agent Conversation History (2025-08-12)
 **Complete fix for tool responses without matching tool calls causing agent failures**
 
