@@ -102,7 +102,7 @@ PRODUCTION_LOGGING = {
     },
     "handlers": {
         "console": {
-            "level": "CRITICAL" if _has_otel_logging() else "WARNING",  # Only critical when OTEL forwards logs
+            "level": "WARNING",  # Reduce console noise but preserve important logs
             "class": "logging.StreamHandler", 
             "stream": stdout,
             "formatter": "console",

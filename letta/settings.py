@@ -235,7 +235,7 @@ class Settings(BaseSettings):
     disable_tracing: bool = Field(default=False, description="Disable OTEL Tracing")
     llm_api_logging: bool = Field(default=True, description="Enable LLM API logging at each step")
     track_last_agent_run: bool = Field(default=False, description="Update last agent run metrics")
-    otel_log_level: str = Field(default="INFO", description="Minimum log level to export to OTEL (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+    otel_log_level: str = Field(default="DEBUG", description="Minimum log level to export to OTEL (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
     otel_include_console_logs: bool = Field(default=True, description="Whether to export console logs to OTEL")
 
     # uvicorn settings
