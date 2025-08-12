@@ -957,7 +957,7 @@ class LettaAgent(BaseAgent):
                 clear=True,
             )
         else:
-            self.logger.info(
+            self.logger.debug(
                 f"Total tokens {total_tokens} does not exceed configured max tokens {llm_config.context_window}, passing summarizing w/o force."
             )
             new_in_context_messages, updated = await self.summarizer.summarize(

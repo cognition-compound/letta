@@ -681,6 +681,7 @@ def start_server(
                 timeout_keep_alive=settings.uvicorn_timeout_keep_alive,
                 ssl_keyfile="certs/localhost-key.pem",
                 ssl_certfile="certs/localhost.pem",
+                access_log=False,  # Disable uvicorn access logs (we use our own middleware)
             )
 
     else:
@@ -719,4 +720,5 @@ def start_server(
                 workers=settings.uvicorn_workers,
                 reload=reload or settings.uvicorn_reload,
                 timeout_keep_alive=settings.uvicorn_timeout_keep_alive,
+                access_log=False,  # Disable uvicorn access logs (we use our own middleware)
             )

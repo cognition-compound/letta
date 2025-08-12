@@ -172,7 +172,7 @@ class JobManager:
 
             # If we are updating the job to a terminal state
             if job_update.status in {JobStatus.completed, JobStatus.failed}:
-                logger.info(f"Current job completed at: {job.completed_at}")
+                logger.debug(f"Current job completed at: {job.completed_at}")
                 job.completed_at = get_utc_time().replace(tzinfo=None)
 
             # Save the updated job to the database first

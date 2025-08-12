@@ -118,7 +118,7 @@ PRODUCTION_LOGGING = {
         "uvicorn": {
             "level": "WARNING",  # Reduce uvicorn noise in production
             "handlers": ["console"],
-            "propagate": True,
+            "propagate": False,  # Don't propagate to avoid duplicate logs
         },
         "uvicorn.access": {
             "level": "WARNING",  # Disable access logs in production (use middleware instead)
@@ -186,7 +186,7 @@ DEVELOPMENT_LOGGING = {
         "uvicorn": {
             "level": "CRITICAL",
             "handlers": ["console"],
-            "propagate": True,
+            "propagate": False,  # Don't propagate to avoid duplicate logs
         },
         "Letta.audit": {
             "level": "INFO",
