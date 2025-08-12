@@ -2,6 +2,47 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: Orphaned Tool Responses in Agent Conversation History (2025-08-12)
+**Complete fix for tool responses without matching tool calls causing agent failures**
+
+**Problem:**
+- Agents failing with OpenAI error: "No tool call found for function call output with call_id"
+- Tool responses persisted in agent.message_ids but their corresponding tool calls were lost
+- Research agent had orphaned response `call_Wqo6GWjx6FTCahmQcloMUDng` from yesterday causing failures today
+- Even resetting agent history via ADE didn't clear the orphaned responses
+
+**Root Cause:**
+1. **Summarizer bug**: The conversation summarizer could keep tool responses while evicting their tool calls
+2. **Incomplete trimming logic**: Only considered user messages as boundaries, ignored tool call/response pairs
+3. **Persistent corruption**: Orphaned message IDs remained in agent state even after history reset
+
+**Two-Part Solution:**
+
+**Part 1: Fixed Summarizer (Prevents Future Orphans)**
+- Added `_adjust_trim_index_for_tool_pairs()` method to maintain tool call/response integrity
+- Maps all tool_call_id relationships before trimming
+- Adjusts trim boundaries to keep tool pairs together
+- Location: `letta/services/summarizer/summarizer.py:305-399`
+
+**Part 2: One-Time Startup Cleanup (Fixes Existing Orphans)**
+- Runs on REST API startup after tool schema refresh
+- Scans all agents and their message histories
+- Identifies tool responses without matching tool calls
+- Removes orphaned message IDs from agent.message_ids
+- Location: `letta/server/rest_api/app.py:cleanup_orphaned_tool_responses()`
+
+**Files Modified:**
+- `letta/services/summarizer/summarizer.py` - Fixed trimming logic
+- `letta/server/rest_api/app.py` - Added startup cleanup
+- `tests/test_summarizer_orphaned_tool_responses.py` - Bug reproduction test
+- `tests/test_orphaned_cleanup_integration.py` - Cleanup verification tests
+
+**Impact:**
+- No more "No tool call found" errors from orphaned responses
+- Existing agents automatically cleaned on next deployment
+- Future summarizations preserve tool call/response pairs correctly
+- Agents can reliably process messages without context corruption
+
 ### ✅ FIXED: Agent-to-Agent Messaging Resilience (2025-08-11)
 **Made agent messaging resilient to ID format variations and tool execution errors**
 

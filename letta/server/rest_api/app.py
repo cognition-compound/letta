@@ -143,6 +143,89 @@ def _get_client_ip_for_error(request: Request) -> str:
     return "unknown"
 
 
+async def cleanup_orphaned_tool_responses(server, worker_id: int) -> None:
+    """
+    One-time cleanup to remove orphaned tool responses from agent message_ids.
+    This fixes agents that have tool responses without corresponding tool calls
+    due to previous summarizer bugs.
+    """
+    from letta.schemas.enums import MessageRole
+    
+    try:
+        # Get all agents
+        all_agents = await server.agent_manager.list_agents_async(actor=server.default_user)
+        cleaned_count = 0
+        total_orphans = 0
+        
+        for agent in all_agents:
+            try:
+                # Skip agents with no messages
+                if not agent.message_ids:
+                    continue
+                    
+                # Load all messages for this agent
+                messages = await server.message_manager.get_messages_by_ids_async(
+                    message_ids=agent.message_ids,
+                    actor=server.default_user
+                )
+                
+                # Build a map of tool_call_id -> assistant message index
+                tool_call_map = {}
+                for i, msg in enumerate(messages):
+                    if msg.role == MessageRole.assistant and hasattr(msg, 'tool_calls') and msg.tool_calls:
+                        for tool_call in msg.tool_calls:
+                            if hasattr(tool_call, 'id'):
+                                tool_call_map[tool_call.id] = i
+                
+                # Find orphaned tool responses
+                orphaned_message_ids = []
+                for msg in messages:
+                    if msg.role == MessageRole.tool and hasattr(msg, 'tool_call_id'):
+                        if msg.tool_call_id not in tool_call_map:
+                            orphaned_message_ids.append(msg.id)
+                            total_orphans += 1
+                
+                # Remove orphaned messages from agent.message_ids
+                if orphaned_message_ids:
+                    # Create new message_ids list without orphans
+                    orphaned_ids_set = set(orphaned_message_ids)
+                    new_message_ids = [
+                        msg_id for msg_id in agent.message_ids
+                        if msg_id not in orphaned_ids_set
+                    ]
+                    
+                    # Update agent state
+                    await server.agent_manager.set_in_context_messages_async(
+                        agent_id=agent.id,
+                        message_ids=new_message_ids,
+                        actor=server.default_user
+                    )
+                    
+                    cleaned_count += 1
+                    logger.info(
+                        f"[Worker {worker_id}] Cleaned {len(orphaned_message_ids)} orphaned tool responses "
+                        f"from agent {agent.name} ({agent.id})"
+                    )
+                    
+            except Exception as e:
+                logger.warning(
+                    f"[Worker {worker_id}] Failed to clean orphaned responses for agent {agent.id}: {e}"
+                )
+                continue
+        
+        if cleaned_count > 0:
+            logger.info(
+                f"[Worker {worker_id}] Orphaned tool response cleanup complete: "
+                f"cleaned {total_orphans} orphans from {cleaned_count} agents"
+            )
+        else:
+            logger.info(f"[Worker {worker_id}] No orphaned tool responses found")
+            
+    except Exception as e:
+        logger.error(f"[Worker {worker_id}] Error during orphaned response cleanup: {e}", exc_info=True)
+        raise
+
+
 @asynccontextmanager
 async def lifespan(app_: FastAPI):
     """
@@ -219,6 +302,13 @@ async def lifespan(app_: FastAPI):
                     logger.warning(f"[Worker {worker_id}] Failed to refresh schema for tool {tool.name}: {e}")
             
             logger.info(f"[Worker {worker_id}] Tool schema refresh complete")
+            
+            # One-time cleanup: Remove orphaned tool responses from agent message_ids
+            logger.info(f"[Worker {worker_id}] Starting orphaned tool response cleanup...")
+            try:
+                await cleanup_orphaned_tool_responses(server, worker_id)
+            except Exception as e:
+                logger.error(f"[Worker {worker_id}] Orphaned tool response cleanup failed: {e}", exc_info=True)
         else:
             logger.warning(f"[Worker {worker_id}] No default user found, skipping tool schema refresh")
     except Exception as e:

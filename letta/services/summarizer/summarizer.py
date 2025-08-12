@@ -254,8 +254,13 @@ class Summarizer:
 
         target_trim_index = max(1, len(all_in_context_messages) - retain_count)
 
+        # Find the next user message starting from target_trim_index
         while target_trim_index < len(all_in_context_messages) and all_in_context_messages[target_trim_index].role != MessageRole.user:
             target_trim_index += 1
+
+        # CRITICAL FIX: Ensure tool call/response pairs are preserved as atomic units
+        # Check if the trim boundary would split a tool call from its response
+        target_trim_index = self._adjust_trim_index_for_tool_pairs(all_in_context_messages, target_trim_index)
 
         evicted_messages = all_in_context_messages[1:target_trim_index]  # everything except sys msg
         updated_in_context_messages = all_in_context_messages[target_trim_index:]  # may be empty
@@ -296,6 +301,102 @@ class Summarizer:
             )
 
         return [all_in_context_messages[0]] + updated_in_context_messages, True
+
+    def _adjust_trim_index_for_tool_pairs(self, messages: List[Message], target_trim_index: int) -> int:
+        """
+        Adjust the trim index to ensure tool call/response pairs are not split.
+        
+        This method scans backwards and forwards from the target trim index to ensure:
+        1. No tool responses are preserved while their tool calls are evicted
+        2. No tool calls are preserved while their responses are evicted
+        
+        Args:
+            messages: List of all messages in the conversation
+            target_trim_index: The initial trim index (where to start keeping messages)
+            
+        Returns:
+            Adjusted trim index that preserves tool call/response integrity
+        """
+        if target_trim_index >= len(messages):
+            return target_trim_index
+            
+        # Build a map of tool_call_id -> assistant message index for quick lookup
+        tool_call_to_assistant = {}
+        for i, msg in enumerate(messages):
+            if msg.role == MessageRole.assistant and msg.tool_calls:
+                for tool_call in msg.tool_calls:
+                    tool_call_to_assistant[tool_call.id] = i
+        
+        # Check messages that would be kept (from target_trim_index onwards)
+        # Look for orphaned tool responses that reference evicted tool calls
+        orphaned_responses = []
+        for i in range(target_trim_index, len(messages)):
+            msg = messages[i]
+            if msg.role == MessageRole.tool and msg.tool_call_id:
+                # This tool response would be kept - check if its tool call would be evicted
+                assistant_index = tool_call_to_assistant.get(msg.tool_call_id)
+                if assistant_index is not None and assistant_index < target_trim_index:
+                    # Tool call would be evicted but response would be kept - orphaned response!
+                    orphaned_responses.append((i, msg.tool_call_id, assistant_index))
+        
+        if orphaned_responses:
+            logger.info(f"Found {len(orphaned_responses)} orphaned tool responses that would be kept while their tool calls are evicted")
+            
+            # Strategy: Move the trim index backwards to include the tool calls
+            # Find the earliest assistant message that needs to be preserved
+            earliest_assistant_to_keep = min(assistant_idx for _, _, assistant_idx in orphaned_responses)
+            
+            # Adjust trim index to include this assistant message and everything after
+            adjusted_trim_index = earliest_assistant_to_keep
+            
+            # Make sure we still respect the user message boundary requirement
+            # Walk backwards from the earliest assistant to find a user message boundary
+            while adjusted_trim_index > 1 and messages[adjusted_trim_index].role != MessageRole.user:
+                adjusted_trim_index -= 1
+                
+            logger.info(f"Adjusted trim index from {target_trim_index} to {adjusted_trim_index} to preserve tool call/response pairs")
+            return adjusted_trim_index
+        
+        # Check messages that would be evicted (from 1 to target_trim_index)
+        # Look for tool calls whose responses would be kept
+        orphaned_calls = []
+        for i in range(1, target_trim_index):
+            msg = messages[i]
+            if msg.role == MessageRole.assistant and msg.tool_calls:
+                for tool_call in msg.tool_calls:
+                    # Look for this tool call's response in the kept messages
+                    for j in range(target_trim_index, len(messages)):
+                        response_msg = messages[j]
+                        if (response_msg.role == MessageRole.tool and 
+                            response_msg.tool_call_id == tool_call.id):
+                            # Tool call would be evicted but response would be kept
+                            orphaned_calls.append((i, tool_call.id, j))
+                            break
+        
+        if orphaned_calls:
+            logger.info(f"Found {len(orphaned_calls)} tool calls that would be evicted while their responses are kept")
+            
+            # Strategy: Move the trim index forward to exclude the orphaned responses
+            # Find the latest response message that needs to be excluded
+            latest_response_to_exclude = max(response_idx for _, _, response_idx in orphaned_calls)
+            
+            # Adjust trim index to exclude this response and everything before it
+            adjusted_trim_index = latest_response_to_exclude + 1
+            
+            # Make sure we still have something to keep and respect user message boundaries
+            while adjusted_trim_index < len(messages) and messages[adjusted_trim_index].role != MessageRole.user:
+                adjusted_trim_index += 1
+                
+            # Don't go beyond the end of messages
+            if adjusted_trim_index >= len(messages):
+                logger.warning("Trim adjustment would exclude all messages - keeping original trim index")
+                return target_trim_index
+                
+            logger.info(f"Adjusted trim index from {target_trim_index} to {adjusted_trim_index} to exclude orphaned tool responses")
+            return adjusted_trim_index
+            
+        # No adjustments needed
+        return target_trim_index
 
 
 def simple_formatter(messages: List[Message], include_system: bool = False) -> str:
@@ -361,12 +462,9 @@ async def simple_summary(messages: List[Message], llm_config: LLMConfig, actor: 
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": summary_transcript},
         ]
-    print("messages going to summarizer:", input_messages)
     input_messages_obj = [simple_message_wrapper(msg) for msg in input_messages]
-    print("messages going to summarizer (objs):", input_messages_obj)
 
     request_data = llm_client.build_request_data(input_messages_obj, llm_config, tools=[])
-    print("request data:", request_data)
     # NOTE: we should disable the inner_thoughts_in_kwargs here, because we don't use it
     # I'm leaving it commented it out for now for safety but is fine assuming the var here is a copy not a reference
     # llm_config.put_inner_thoughts_in_kwargs = False
