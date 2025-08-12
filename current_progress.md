@@ -2,6 +2,40 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: Agent Context Death on Summarization (2025-08-12)
+**Fixed critical bug where agents lost all context when hitting context window limits**
+
+**Problem:**
+- Agents "just stopped working" when hitting context window limit
+- Research agent specifically affected - would become completely non-functional
+- Root cause: When no user messages existed after initial request, summarizer's trim index search would go beyond message bounds
+- Agent left with only system message, losing all context of task and progress
+
+**Evidence:**
+- Research agent instructed to NEVER send messages to user - only uses tools
+- After initial user message, all subsequent messages are tool calls/responses
+- When summarizer ran with `force=True, clear=True`, trim index calculation failed
+- Line 267-271 in summarizer.py: unbounded while loop searching for user message
+- Result: Agent has no memory of what was requested or what work was done
+
+**Solution - Five Critical Safety Checks:**
+1. **Prevent bounds overflow**: Check if trim index exceeds message count, adjust to safe position
+2. **Limit search distance**: Cap user message search to 10 messages maximum
+3. **Fallback strategy**: If no user boundary found, preserve original position with minimal context
+4. **Tool pair preservation**: Adjust for tool call/response integrity after boundary calculation
+5. **Emergency context preservation**: Never return empty context - keep at least 5 messages
+
+**Files Modified:**
+- `letta/services/summarizer/summarizer.py:257-298` - Added comprehensive safety checks
+- `tests/test_research_agent_context_death.py` - Test reproducing exact failure scenario
+- `tests/test_no_user_messages.py` - Edge case tests for missing user boundaries
+
+**Impact:**
+- Research agent now maintains context through summarization
+- Agents no longer "die" when hitting context limits
+- System preserves minimum viable context for continued operation
+- Fix deployed prevents the "agent just stops working" issue reported in staging
+
 ### ✅ IMPLEMENTED: Comprehensive Structured Logging for Agent Communication Debugging (2025-08-12)
 **Enhanced logging system to make debugging agent communication issues 10x faster**
 

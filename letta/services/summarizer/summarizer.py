@@ -253,17 +253,49 @@ class Summarizer:
             logger.info(f"Requested force summarization, evicting until we retain only {retain_count} messages.")
 
         target_trim_index = max(1, len(all_in_context_messages) - retain_count)
+        
+        # CRITICAL FIX: Prevent trim index from going past message bounds
+        if target_trim_index >= len(all_in_context_messages):
+            target_trim_index = max(1, len(all_in_context_messages) - max(2, retain_count // 2))
+            logger.warning(f"Trim index would exceed message bounds, adjusted to {target_trim_index}")
 
-        # Find the next user message starting from target_trim_index
-        while target_trim_index < len(all_in_context_messages) and all_in_context_messages[target_trim_index].role != MessageRole.user:
+        # Try to find a user message boundary, but with limits to prevent runaway search
+        original_trim_index = target_trim_index
+        max_search_distance = min(10, len(all_in_context_messages) - target_trim_index)
+        search_count = 0
+        
+        while (target_trim_index < len(all_in_context_messages) and 
+               all_in_context_messages[target_trim_index].role != MessageRole.user and
+               search_count < max_search_distance):
             target_trim_index += 1
+            search_count += 1
+        
+        # If we couldn't find a user message boundary within reasonable distance
+        if target_trim_index >= len(all_in_context_messages) or search_count >= max_search_distance:
+            logger.warning(f"No user message boundary found within {max_search_distance} messages")
+            # Fall back to the original position to preserve some context
+            target_trim_index = min(original_trim_index, len(all_in_context_messages) - 2)
 
         # CRITICAL FIX: Ensure tool call/response pairs are preserved as atomic units
         # Check if the trim boundary would split a tool call from its response
         target_trim_index = self._adjust_trim_index_for_tool_pairs(all_in_context_messages, target_trim_index)
 
+        # Final safety check after tool pair adjustment
+        if target_trim_index >= len(all_in_context_messages) - 1:
+            # We would trim almost everything - keep at least some context
+            target_trim_index = max(1, len(all_in_context_messages) - max(retain_count, 5))
+            logger.warning(f"Trim would remove too much context, keeping last {len(all_in_context_messages) - target_trim_index} messages")
+
         evicted_messages = all_in_context_messages[1:target_trim_index]  # everything except sys msg
         updated_in_context_messages = all_in_context_messages[target_trim_index:]  # may be empty
+        
+        # CRITICAL: Never return empty context (system message only)
+        if len(updated_in_context_messages) == 0:
+            logger.error("Summarization would leave no context! Keeping minimal context.")
+            # Keep at least the last few messages
+            keep_last = min(max(retain_count, 5), len(all_in_context_messages) - 1)
+            updated_in_context_messages = all_in_context_messages[-keep_last:] if keep_last > 0 else all_in_context_messages[-2:]
+            evicted_messages = all_in_context_messages[1:-len(updated_in_context_messages)] if len(updated_in_context_messages) > 0 else []
 
         # If *no* messages were evicted we really have nothing to do
         if not evicted_messages:
