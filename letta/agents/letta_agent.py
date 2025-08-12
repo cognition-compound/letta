@@ -126,6 +126,7 @@ class LettaAgent(BaseAgent):
         # The EphemeralSummaryAgent uses the same LLM config as the main agent,
         # so if the main agent works, summarization will work too
         if enable_summarization:
+            logger.info(f"Creating EphemeralSummaryAgent for agent {agent_id} with summarizer_mode={summarizer_mode}")
             self.summarization_agent = EphemeralSummaryAgent(
                 target_block_label=self.summary_block_label,
                 agent_id=agent_id,
@@ -134,6 +135,8 @@ class LettaAgent(BaseAgent):
                 agent_manager=self.agent_manager,
                 actor=self.actor,
             )
+        else:
+            logger.warning(f"Summarization disabled for agent {agent_id} - will use eviction-only mode without summaries!")
 
         self.summarizer = Summarizer(
             mode=summarizer_mode,

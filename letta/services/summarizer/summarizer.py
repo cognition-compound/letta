@@ -123,9 +123,10 @@ class Summarizer:
 
         # Check if summarizer_agent is available, fallback to static buffer if not
         if self.summarizer_agent is None:
-            logger.warning(
-                "PARTIAL_EVICT_MESSAGE_BUFFER mode requires a summarizer_agent, but none is available. "
-                "Falling back to STATIC_MESSAGE_BUFFER mode. This typically happens when no LLM provider is configured."
+            logger.critical(
+                f"PARTIAL_EVICT_MESSAGE_BUFFER mode requires a summarizer_agent, but none is available! "
+                f"Falling back to STATIC_MESSAGE_BUFFER mode which does NOT insert summaries. "
+                f"Agent will lose context permanently! Message count: {len(all_in_context_messages)}"
             )
             return self._static_buffer_summarization(
                 in_context_messages,
@@ -214,6 +215,8 @@ class Summarizer:
     ) -> Tuple[List[Message], bool]:
         """
         Implements static buffer summarization by maintaining a fixed-size message buffer (< N messages).
+        
+        WARNING: This mode does NOT insert summaries - it only evicts old messages!
 
         Logic:
         1. Combine existing context messages with new messages
@@ -243,6 +246,14 @@ class Summarizer:
                 f"Nothing to evict, returning in context messages as is. Current buffer length is {len(all_in_context_messages)}, limit is {self.message_buffer_limit}."
             )
             return all_in_context_messages, False
+        
+        # CRITICAL WARNING: This mode evicts without creating summaries!
+        if not self.summarizer_agent:
+            logger.critical(
+                f"STATIC_BUFFER mode triggered WITHOUT a summarizer agent! "
+                f"Will evict {len(all_in_context_messages) - self.message_buffer_min} messages with NO SUMMARY. "
+                f"Agent will permanently lose this context!"
+            )
 
         # Always retain at least 2 messages for context continuity, even when clearing
         retain_count = 2 if clear else self.message_buffer_min
@@ -254,13 +265,30 @@ class Summarizer:
 
         target_trim_index = max(1, len(all_in_context_messages) - retain_count)
 
-        # Find the next user message starting from target_trim_index
-        while target_trim_index < len(all_in_context_messages) and all_in_context_messages[target_trim_index].role != MessageRole.user:
+        # Find the next user message starting from target_trim_index, but don't exceed bounds
+        original_trim_index = target_trim_index
+        max_search = min(10, len(all_in_context_messages) - target_trim_index - 1)  # Leave at least 1 message
+        search_count = 0
+        
+        while (target_trim_index < len(all_in_context_messages) - 1 and 
+               all_in_context_messages[target_trim_index].role != MessageRole.user and
+               search_count < max_search):
             target_trim_index += 1
+            search_count += 1
+        
+        # If we couldn't find a user message boundary or went too far, use original position
+        if target_trim_index >= len(all_in_context_messages) - 1:
+            logger.warning(f"No user message boundary found within {max_search} messages, using original position")
+            target_trim_index = original_trim_index
 
         # CRITICAL FIX: Ensure tool call/response pairs are preserved as atomic units
         # Check if the trim boundary would split a tool call from its response
         target_trim_index = self._adjust_trim_index_for_tool_pairs(all_in_context_messages, target_trim_index)
+        
+        # Final safety check: never leave agent with no context
+        if target_trim_index >= len(all_in_context_messages):
+            logger.error(f"Trim index {target_trim_index} would leave no context! Keeping minimum messages.")
+            target_trim_index = max(1, len(all_in_context_messages) - max(retain_count, 3))
 
         evicted_messages = all_in_context_messages[1:target_trim_index]  # everything except sys msg
         updated_in_context_messages = all_in_context_messages[target_trim_index:]  # may be empty
