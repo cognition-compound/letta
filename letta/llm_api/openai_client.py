@@ -666,7 +666,7 @@ class OpenAIClient(LLMClientBase):
 
         # Configure reasoning parameters for reasoning models
         if is_openai_reasoning_model(model):
-            data["reasoning"] = {"effort": "low"}  # Use low effort for faster responses
+            data["reasoning"] = {"effort": "minimal", "summary": "auto"}  # Use minimal effort with auto summary
             # Note: reasoning.content is not available via API - only reasoning.encrypted_content
             # OpenAI intentionally does not expose actual reasoning thoughts
 

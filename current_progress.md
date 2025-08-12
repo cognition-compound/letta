@@ -2,6 +2,24 @@
 
 ## 🚀 Recent Updates
 
+### ✅ UPDATED: OpenAI Reasoning Model Settings (2025-08-12)
+**Changed GPT-5 reasoning parameters to use minimal effort with auto summaries**
+
+**Changes:**
+- Updated reasoning settings from `{"effort": "low"}` to `{"effort": "minimal", "summary": "auto"}`
+- Added "minimal" to allowed values in `LLMConfig.reasoning_effort` schema
+- Updated tests to verify correct settings are applied
+
+**Files Modified:**
+- `letta/llm_api/openai_client.py:669` - Changed reasoning settings for GPT-5 models
+- `letta/schemas/llm_config.py:73` - Added "minimal" to reasoning_effort Literal options
+- `tests/test_responses_api_conversion.py` - Updated test expectations and added verification
+
+**Impact:**
+- GPT-5 models will now use minimal reasoning effort for faster responses
+- Auto summary ensures reasoning summaries are generated when appropriate
+- All reasoning models (o1, o2, o3, o4, gpt-5) affected by this change
+
 ### ✅ FIXED: Agent Context Death on Summarization (2025-08-12)
 **Fixed critical bug where agents lost all context when hitting context window limits**
 

@@ -136,7 +136,7 @@ class TestResponsesAPIConversion:
                 "total_tokens": 32
             },
             "reasoning": {
-                "effort": "low",
+                "effort": "minimal",
                 "summary": "The user is greeting me and asking how I am. I should respond politely."
             }
         }
@@ -247,6 +247,28 @@ class TestResponsesAPIConversion:
         # as they'll be handled by the Responses API format
         assert "verbosity" not in result
         assert "reasoning_effort" not in result
+    
+    def test_gpt5_reasoning_settings(self):
+        """Test that GPT-5 models get the correct reasoning settings."""
+        messages = [
+            PydanticMessage(
+                role=MessageRole.user,
+                content=[TextContent(text="Hello")],
+                agent_id="agent-123",
+                model="gpt-5"
+            )
+        ]
+        
+        # Create a config with GPT-5 model
+        gpt5_config = self.llm_config.model_copy()
+        gpt5_config.model = "gpt-5"
+        
+        result = self.client.build_request_data(messages, gpt5_config)
+        
+        # Should include reasoning parameters for GPT-5
+        assert "reasoning" in result
+        assert result["reasoning"]["effort"] == "minimal"
+        assert result["reasoning"]["summary"] == "auto"
 
     def test_full_conversion_pipeline(self):
         """Test the complete conversion pipeline from request to response."""
