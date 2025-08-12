@@ -158,3 +158,100 @@ def test_failing_current_behavior_bug():
     assert correct_logic == False, "Correct logic would NOT trigger context exceeded"
     
     print(f"\n✅ BUG CONFIRMED: Lines 373, 645, 890 in letta_agent.py pass cumulative usage instead of current context size")
+
+
+@pytest.mark.asyncio
+async def test_rebuild_context_window_fix():
+    """
+    Test that _rebuild_context_window now uses current context size instead of cumulative usage.
+    
+    This test verifies that the fix works: _rebuild_context_window should calculate
+    the actual current context size from the messages, not rely on the passed total_tokens.
+    """
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from letta.agents.letta_agent import LettaAgent
+    from letta.schemas.agent import AgentState
+    from letta.schemas.llm_config import LLMConfig
+    from letta.schemas.message import Message
+    from letta.schemas.enums import MessageRole
+    
+    # Mock dependencies
+    mock_agent_manager = AsyncMock()
+    mock_message_manager = AsyncMock()
+    mock_summarizer = AsyncMock()
+    mock_passage_manager = AsyncMock()
+    mock_user = MagicMock()
+    
+    # Create agent with small context window
+    agent_state = AgentState(
+        id="test-agent",
+        name="test-agent", 
+        llm_config=LLMConfig(
+            model="gpt-4",
+            context_window=1000,  # Small context window
+            model_endpoint_type="openai"
+        )
+    )
+    
+    agent = LettaAgent(
+        agent_state=agent_state,
+        agent_manager=mock_agent_manager,
+        message_manager=mock_message_manager,
+        user=mock_user,
+        summarizer=mock_summarizer,
+        passage_manager=mock_passage_manager
+    )
+    
+    # Create test messages that have SMALL actual context
+    small_messages = [
+        Message(id="msg1", role=MessageRole.user, content="Hi"),
+        Message(id="msg2", role=MessageRole.assistant, content="Hello!"),
+    ]
+    
+    # Mock token counting to return small number for our test messages
+    with patch('letta.agents.letta_agent.num_tokens_from_messages') as mock_token_count:
+        mock_token_count.return_value = 500  # Small current context size
+        
+        # Mock summarizer to track if it's called with force=True
+        mock_summarizer.summarize = AsyncMock()
+        mock_summarizer.summarize.return_value = (small_messages, False)
+        
+        # Mock agent manager
+        mock_agent_manager.set_in_context_messages_async = AsyncMock()
+        
+        # Test 1: BEFORE the fix this would have incorrectly triggered summarization
+        # because total_tokens=849000 > context_window=1000
+        # AFTER the fix it should NOT trigger because current_context_tokens=500 < context_window=1000
+        
+        huge_cumulative_usage = 849000  # This is cumulative usage (like the 835K bug)
+        
+        result_messages = await agent._rebuild_context_window(
+            in_context_messages=small_messages,
+            new_letta_messages=[],
+            llm_config=agent_state.llm_config,
+            total_tokens=huge_cumulative_usage,  # HUGE cumulative (this used to cause the bug)
+            force=False
+        )
+        
+        # Verify the fix works:
+        # 1. Token counting was called with the actual messages
+        mock_token_count.assert_called_once()
+        openai_messages_arg = mock_token_count.call_args[0][0]
+        assert len(openai_messages_arg) == len(small_messages), "Should count tokens for actual messages"
+        
+        # 2. Summarization was NOT called with force=True (because current context is small)
+        mock_summarizer.summarize.assert_called_once()
+        call_args = mock_summarizer.summarize.call_args
+        assert 'force' not in call_args.kwargs or call_args.kwargs['force'] != True, \
+            "Should not force summarization when current context is small"
+        
+        # 3. Messages were returned without forced clearing
+        assert result_messages == small_messages, "Should return original messages when context is small"
+        
+        print(f"\n✅ FIX VERIFIED:")
+        print(f"  Cumulative usage: {huge_cumulative_usage:,} tokens (would have triggered bug)")
+        print(f"  Actual current context: {mock_token_count.return_value} tokens")
+        print(f"  Context limit: {agent_state.llm_config.context_window} tokens")
+        print(f"  Forced summarization: NO (correct behavior)")
+        print(f"  Before fix: Would have incorrectly triggered summarization")
+        print(f"  After fix: Correctly uses current context size")
