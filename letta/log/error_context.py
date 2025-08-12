@@ -11,7 +11,7 @@ def log_llm_error_with_context(
     agent_id: Optional[str] = None,
     additional_context: Optional[Dict[str, Any]] = None
 ):
-    """Log LLM errors with full request context for debugging.
+    """Log LLM errors with structured context for debugging.
     
     Args:
         error: The exception that occurred
@@ -20,29 +20,42 @@ def log_llm_error_with_context(
         additional_context: Additional debugging context
     """
     
+    # Build structured context for logging
     context = {
         "error_type": type(error).__name__,
         "error_message": str(error),
-        
-        # The actual request (truncated for readability)
         "model": request_data.get("model"),
-        "prompt_preview": truncate_for_logging(request_data.get("messages", [])),
-        "tools_used": [t.get("name", "unknown") for t in request_data.get("tools", [])],
-        "tool_choice": request_data.get("tool_choice"),
-        
-        # Context
         "agent_id": agent_id,
         "stream_enabled": request_data.get("stream", False),
-        
-        # Raw request (for deep debugging, heavily truncated)
-        "full_request_sample": _truncate_json(request_data, max_chars=2000)
     }
+    
+    # Add input/message information
+    if "input" in request_data:  # Responses API format
+        input_messages = request_data.get("input", [])
+        context["input_count"] = len(input_messages)
+        if input_messages:
+            context["first_input_type"] = input_messages[0].get("type")
+            context["last_input_type"] = input_messages[-1].get("type")
+    elif "messages" in request_data:  # Chat Completions API format
+        messages = request_data.get("messages", [])
+        context["messages_count"] = len(messages)
+        context["message_preview"] = truncate_for_logging(messages)
+    
+    # Add tool information
+    tools = request_data.get("tools", [])
+    if tools:
+        context["tools_count"] = len(tools)
+        context["tool_names"] = [t.get("name", "unknown") for t in tools[:5]]  # First 5 tools
+        if len(tools) > 5:
+            context["tool_names"].append(f"... and {len(tools) - 5} more")
+        context["tool_choice"] = request_data.get("tool_choice")
     
     # Add any additional context
     if additional_context:
         context.update(additional_context)
     
-    logger.error(f"LLM request failed: {str(error)}", extra=context)
+    # Use structured logging with 'extra' parameter
+    logger.error("LLM request failed", extra=context)
 
 
 def truncate_for_logging(messages: List[Dict], max_chars: int = 800) -> str:

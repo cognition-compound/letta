@@ -41,6 +41,35 @@ from letta.settings import model_settings
 logger = get_logger(__name__)
 
 
+def truncate_message_content_for_logging(messages: list, max_chars: int = 200) -> list:
+    """Create a truncated version of messages for logging that preserves structure but limits content size."""
+    truncated = []
+    for msg in messages[:3]:  # Only show first 3 messages
+        truncated_msg = {
+            "type": msg.get("type"),
+            "role": msg.get("role"),
+        }
+        
+        # Handle content field
+        content = msg.get("content")
+        if isinstance(content, str):
+            truncated_msg["content_preview"] = content[:max_chars] + ("..." if len(content) > max_chars else "")
+        elif isinstance(content, list):
+            truncated_msg["content_items"] = len(content)
+            truncated_msg["content_types"] = [item.get("type") for item in content[:2]]  # First 2 types
+        
+        # Include tool calls if present
+        if msg.get("tool_calls"):
+            truncated_msg["tool_calls"] = [tc.get("function", {}).get("name") for tc in msg.get("tool_calls", [])[:2]]
+            
+        truncated.append(truncated_msg)
+    
+    if len(messages) > 3:
+        truncated.append({"...": f"and {len(messages) - 3} more messages"})
+    
+    return truncated
+
+
 def is_openai_reasoning_model(model: str) -> bool:
     """Utility function to check if the model is a 'reasoner'"""
 
@@ -714,74 +743,70 @@ class OpenAIClient(LLMClientBase):
         Returns response in clean OpenAI SDK format (ready for input reuse).
         """
         try:
-            # Log structured request details
-            logger.info(f"[API_REQUEST] Responses API call starting")
-            logger.debug(f"[API_REQUEST] Model: {llm_config.model}, Endpoint: {llm_config.model_endpoint}")
-            logger.debug(f"[API_REQUEST] Input messages: {len(request_data.get('input', []))}, Tools: {len(request_data.get('tools', []))}")
-            logger.debug(
-                f"[API_REQUEST] Tool choice: {request_data.get('tool_choice')}, Parallel tools: {request_data.get('parallel_tool_calls')}"
-            )
-
-            # Log first few tools for debugging
-            if request_data.get("tools"):
-                tools = request_data["tools"]
-                logger.debug(
-                    f"[API_REQUEST] First tool: name='{tools[0].get('name')}', type='{tools[0].get('type')}', params_count={len(tools[0].get('parameters', {}).get('properties', {}))}"
-                )
-
-            # Log request structure (truncated)
-            request_summary = {
-                "model": request_data.get("model"),
-                "input_count": len(request_data.get("input", [])),
-                "tools_count": len(request_data.get("tools", [])),
-                "tool_choice": request_data.get("tool_choice"),
-                "temperature": request_data.get("temperature"),
-                "max_output_tokens": request_data.get("max_output_tokens"),
+            # Log structured request details using 'extra' for structured logging
+            request_context = {
+                "model": llm_config.model,
+                "endpoint": llm_config.model_endpoint,
+                "input_count": len(request_data.get('input', [])),
+                "tools_count": len(request_data.get('tools', [])),
+                "tool_choice": request_data.get('tool_choice'),
+                "parallel_tools": request_data.get('parallel_tool_calls'),
+                "temperature": request_data.get('temperature'),
+                "max_output_tokens": request_data.get('max_output_tokens'),
             }
-            logger.debug(f"[API_REQUEST] Request summary: {json.dumps(request_summary, indent=2)}")
+            
+            # Add tool names (first 5 only for brevity)
+            if request_data.get("tools"):
+                request_context["tool_names"] = [t.get('name') for t in request_data["tools"][:5]]
+                if len(request_data["tools"]) > 5:
+                    request_context["tool_names"].append(f"... and {len(request_data['tools']) - 5} more")
+            
+            logger.info("[API_REQUEST] Responses API call starting", extra=request_context)
 
             kwargs = await self._prepare_client_kwargs_async(llm_config)
             client = AsyncOpenAI(**kwargs)
             response = await client.responses.create(**request_data)
 
-            # Log structured response details
+            # Convert and analyze response
             clean_response = self.to_openai_format(response)
-            response_summary = {
-                "id": clean_response.get("id"),
-                "model": clean_response.get("model"),
-                "status": clean_response.get("status"),
-                "output_count": len(clean_response.get("output", [])),
-                "usage": clean_response.get("usage", {}),
-            }
-
-            # Check for tool calls in response
+            
+            # Count tool calls in response
             output_items = clean_response.get("output", [])
-            tool_calls_count = 0
+            tool_calls_info = []
             for item in output_items:
                 if item.get("type") == "message" and item.get("tool_calls"):
-                    tool_calls_count += len(item["tool_calls"])
+                    for tc in item["tool_calls"]:
+                        tool_calls_info.append({
+                            "name": tc.get('function', {}).get('name'),
+                            "id": tc.get('id')
+                        })
                 elif item.get("type") == "function_call":
-                    tool_calls_count += 1
-
-            response_summary["tool_calls_returned"] = tool_calls_count
-
-            logger.info(f"[API_RESPONSE] Responses API call successful")
-            logger.debug(f"[API_RESPONSE] Response summary: {json.dumps(response_summary, indent=2)}")
-
-            # Log first tool call if present for debugging
-            if tool_calls_count > 0:
-                for item in output_items:
-                    if item.get("type") == "message" and item.get("tool_calls"):
-                        first_tool = item["tool_calls"][0]
-                        logger.debug(
-                            f"[API_RESPONSE] First tool call: name='{first_tool.get('function', {}).get('name')}', id='{first_tool.get('id')}'"
-                        )
-                        break
-                    elif item.get("type") == "function_call":
-                        logger.debug(f"[API_RESPONSE] First function call: name='{item.get('name')}', args='{item.get('arguments')}'")
-                        break
+                    tool_calls_info.append({
+                        "name": item.get('name'),
+                        "id": item.get('call_id')
+                    })
+            
+            # Log structured response using 'extra' for better observability
+            response_context = {
+                "response_id": clean_response.get("id"),
+                "model": clean_response.get("model"),
+                "status": clean_response.get("status"),
+                "output_count": len(output_items),
+                "tool_calls_count": len(tool_calls_info),
+                "usage": clean_response.get("usage", {}),
+            }
+            
+            # Add tool call names if present (first 3 for brevity)
+            if tool_calls_info:
+                response_context["tool_calls"] = [tc["name"] for tc in tool_calls_info[:3]]
+                if len(tool_calls_info) > 3:
+                    response_context["tool_calls"].append(f"... and {len(tool_calls_info) - 3} more")
+            
+            # Log with appropriate level based on outcome
+            if not tool_calls_info and request_data.get("tools"):
+                logger.warning("[API_RESPONSE] No tool calls returned despite tools provided", extra=response_context)
             else:
-                logger.warning(f"[API_RESPONSE] No tool calls returned despite tools provided!")
+                logger.info("[API_RESPONSE] Responses API call successful", extra=response_context)
 
             return clean_response
 
@@ -815,9 +840,24 @@ class OpenAIClient(LLMClientBase):
                 }
             )
 
-            logger.error(f"[API_ERROR] Responses API call failed: {type(e).__name__}: {str(e)}")
-            logger.error(f"[API_ERROR] Request model: {request_data.get('model')}, tools: {len(request_data.get('tools', []))}")
-            logger.debug(f"[API_ERROR] Full request data: {json.dumps(request_data, indent=2, default=str)}")
+            # Log structured error with truncated request data
+            error_context = {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "model": request_data.get('model'),
+                "tools_count": len(request_data.get('tools', [])),
+                "input_count": len(request_data.get('input', [])),
+                "tool_names": [t.get('name') for t in request_data.get('tools', [])[:5]],  # First 5 tool names
+            }
+            
+            # Add truncated request sample for debugging
+            if request_data.get('input'):
+                # Show first and last message types only
+                input_messages = request_data['input']
+                error_context['first_input_type'] = input_messages[0].get('type') if input_messages else None
+                error_context['last_input_type'] = input_messages[-1].get('type') if input_messages else None
+                
+            logger.error(f"[API_ERROR] Responses API call failed", extra=error_context)
             raise
 
     @trace_method
