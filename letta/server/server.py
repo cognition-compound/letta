@@ -289,7 +289,7 @@ class SyncServer(Server):
                 sandbox_config = self.sandbox_config_manager.create_or_update_sandbox_config(
                     sandbox_config_create=sandbox_config_create, actor=oss_default_user
                 )
-                logger.info(f"Successfully created default local sandbox config:\n{sandbox_config.get_local_config().model_dump()}")
+                logger.debug(f"Successfully created default local sandbox config:\n{sandbox_config.get_local_config().model_dump()}")
 
                 if use_venv and tool_settings.tool_exec_autoreload_venv:
                     prepare_local_sandbox(
