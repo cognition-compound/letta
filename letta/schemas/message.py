@@ -876,19 +876,26 @@ class Message(BaseMessage):
                 if isinstance(content, ReasoningContent):
                     reasoning_text = content.reasoning
                     
-                    # Handle reasoning content - try JSON first for legacy, then text
+                    # Handle reasoning content - reconstruct proper OpenAI reasoning structure
                     if reasoning_text:
                         try:
-                            # Try to deserialize as JSON - legacy behavior for old messages with serialized objects
+                            # Try to deserialize as JSON - should be our complete reasoning structure
                             reasoning_obj = json.loads(reasoning_text)
                             
-                            # Handle different serialization formats
                             if isinstance(reasoning_obj, dict):
-                                if "output_reasoning_items" in reasoning_obj:
-                                    # This was serialized from output items format - keep as reasoning_content
+                                # Check if it's our complete reasoning structure format
+                                if "output_reasoning" in reasoning_obj and "metadata" in reasoning_obj:
+                                    # This is our complete reasoning structure - reconstruct COMPLETE reasoning for OpenAI
+                                    # The model needs its full reasoning context back, not just metadata
+                                    openai_message["reasoning"] = reasoning_obj
+                                elif "metadata" in reasoning_obj:
+                                    # Minimal case: only metadata, no reasoning items - still reconstruct complete structure
+                                    openai_message["reasoning"] = reasoning_obj
+                                elif "output_reasoning_items" in reasoning_obj:
+                                    # Legacy format from old serialization - keep as reasoning_content
                                     openai_message["reasoning_content"] = reasoning_text
                                 elif "effort" in reasoning_obj or "summary" in reasoning_obj:
-                                    # This was serialized from top-level reasoning format - reconstruct it for OpenAI
+                                    # Legacy: This was serialized top-level reasoning - use directly
                                     openai_message["reasoning"] = reasoning_obj
                                 else:
                                     # Unknown JSON format - keep as reasoning_content
@@ -898,7 +905,7 @@ class Message(BaseMessage):
                                 openai_message["reasoning_content"] = reasoning_text
                             
                         except (json.JSONDecodeError, TypeError):
-                            # Not JSON - treat as regular reasoning content (actual text from our new extraction)
+                            # Not JSON - treat as regular reasoning content (plain text)
                             openai_message["reasoning_content"] = reasoning_text
                     
                     # Handle signature field (for Anthropic models)
