@@ -20,6 +20,27 @@ def _has_json_logger() -> bool:
         return False
 
 
+def _has_otel_logging() -> bool:
+    """Check if OpenTelemetry logging is configured and available"""
+    import os
+    
+    # Check if OTEL logging is explicitly disabled
+    logs_exporter = os.environ.get("OTEL_LOGS_EXPORTER", "otlp")
+    if logs_exporter == "none":
+        return False
+    
+    # Check if OTEL endpoint is configured (required for OTLP exporter)
+    if logs_exporter == "otlp":
+        otlp_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT") or os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+        return bool(otlp_endpoint)
+    
+    # Console exporter is always available
+    if logs_exporter == "console":
+        return True
+        
+    return False
+
+
 def _setup_logfile() -> "Path":
     """ensure the logger filepath is in place
 
@@ -81,8 +102,8 @@ PRODUCTION_LOGGING = {
     },
     "handlers": {
         "console": {
-            "level": "WARNING",  # Only warnings and above to stdout in production
-            "class": "logging.StreamHandler",
+            "level": "CRITICAL" if _has_otel_logging() else "WARNING",  # Only critical when OTEL forwards logs
+            "class": "logging.StreamHandler", 
             "stream": stdout,
             "formatter": "console",
         },
@@ -107,7 +128,7 @@ PRODUCTION_LOGGING = {
     },
     "root": {
         "level": "INFO",  # INFO and above in production
-        "handlers": ["console", "file"],
+        "handlers": ["console", "file"],  # Console level controlled by handler when OTEL available
     },
     "loggers": {
         "Letta": {

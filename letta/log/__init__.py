@@ -24,6 +24,8 @@ if os.path.exists(_log_module_path):
 
     get_logger = _log_module.get_logger
     get_audit_logger = _log_module.get_audit_logger
+    _has_otel_logging = _log_module._has_otel_logging
+    PRODUCTION_LOGGING = _log_module.PRODUCTION_LOGGING
 else:
     # Fallback implementation
     def get_logger(name=None):
@@ -35,6 +37,12 @@ else:
     def get_audit_logger():
         """Get the audit logger instance."""
         return logging.getLogger("Letta.audit")
+
+    def _has_otel_logging():
+        """Fallback - assume no OTEL logging."""
+        return False
+
+    PRODUCTION_LOGGING = {}
 
 
 # Stub implementations for enhanced features (to be implemented later)
@@ -117,6 +125,8 @@ def lazy_log_with_context(logger, level, message, expensive_context=None):
 __all__ = [
     "get_logger",
     "get_audit_logger",
+    "_has_otel_logging", 
+    "PRODUCTION_LOGGING",
     "LazyLogContext",
     "create_lazy_context",
     "lazy_log_enabled",
