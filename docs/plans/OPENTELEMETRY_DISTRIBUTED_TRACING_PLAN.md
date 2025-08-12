@@ -147,12 +147,11 @@ HTTP Request (root span)
 ## Configuration Requirements
 
 ### Environment Variables
-- `OTEL_TRACES_EXPORTER`: Set to "otlp" for SignOz
-- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`: SignOz collector endpoint
-- `OTEL_TRACE_SAMPLER`: Sampling strategy configuration
-- `LETTA_TRACING_ENABLED`: Feature flag for tracing
+- `OTEL_SERVICE_NAME="letta-server"`
+- `OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector:4317"`
 
 ### Instrumentation Setup
+- Initialize tracing in `letta/server/rest_api/app.py` startup
 - Auto-instrumentation for FastAPI and SQLAlchemy
 - Custom instrumentation for agent and tool execution
 - Span processor configuration for performance
@@ -177,7 +176,6 @@ HTTP Request (root span)
 - Memory management for long-running traces
 
 ### Rollout Strategy
-- Feature flag for gradual enablement
 - Per-environment configuration
 - Performance monitoring during rollout
 
