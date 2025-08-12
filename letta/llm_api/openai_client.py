@@ -544,13 +544,8 @@ class OpenAIClient(LLMClientBase):
                 # If we found reasoning items, use the first one (OpenAI typically returns one)
                 break
         
-        # Fallback: check for summary in top-level reasoning metadata
-        if not reasoning_summary and not reasoning_content:
-            top_reasoning = response_data.get("reasoning", {})
-            if isinstance(top_reasoning, dict):
-                metadata_summary = top_reasoning.get("summary")
-                if metadata_summary and isinstance(metadata_summary, str):
-                    reasoning_summary = metadata_summary
+        # NOTE: Do not fallback to top-level reasoning.summary - that's just config metadata ("auto", "detailed", etc.)
+        # Only use actual reasoning content from output items, not configuration settings
         
         return reasoning_content, reasoning_summary
 

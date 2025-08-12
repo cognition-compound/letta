@@ -43,6 +43,12 @@
 - Agents now have transparent reasoning visibility
 - Maintains backward compatibility with existing messages
 
+**⚠️ FOLLOW-UP FIX: Removed Config Metadata Fallback (2025-08-12)**
+- Fixed bug where frontend showed "detailed" (config value) instead of reasoning content
+- Removed fallback to `reasoning.summary` field which contains config settings, not actual content
+- System now only extracts reasoning from `output` items, ignores configuration metadata
+- When no actual reasoning exists, ReasoningMessage won't be created (proper behavior)
+
 ### ✅ UPDATED: OpenAI Reasoning Model Settings (2025-08-12)
 **Changed GPT-5 reasoning parameters to use minimal effort with auto summaries**
 
