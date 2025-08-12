@@ -3,6 +3,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from letta.log import get_logger
+from letta.otel.tracing import trace_method, tracer
 from letta.schemas.agent import AgentState
 from letta.schemas.enums import MessageRole
 from letta.schemas.letta_message import AssistantMessage
@@ -20,6 +21,7 @@ logger = get_logger(__name__)
 class LettaMultiAgentToolExecutor(ToolExecutor):
     """Executor for LETTA multi-agent core tools."""
 
+    @trace_method
     async def execute(
         self,
         function_name: str,
@@ -66,6 +68,7 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
         results = await asyncio.gather(*tasks)
         return str(results)
 
+    @trace_method
     async def _process_agent(self, agent_id: str, message: str, source_agent_id: Optional[str] = None) -> Dict[str, Any]:
         """Process agent message by creating a job and running it in the background."""
         from letta.schemas.run import Run

@@ -394,6 +394,7 @@ class LettaAgent(BaseAgent):
         for finish_chunk in self.get_finish_chunks_for_stream(usage, stop_reason):
             yield f"data: {finish_chunk}\n\n"
 
+    @trace_method
     async def _step(
         self,
         agent_state: AgentState,
@@ -447,6 +448,7 @@ class LettaAgent(BaseAgent):
             "workflow_type": "agent_processing",
             **correlation_context
         })
+        
         current_in_context_messages, new_in_context_messages = await _prepare_in_context_messages_no_persist_async(
             input_messages, agent_state, self.message_manager, self.actor
         )

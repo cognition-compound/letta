@@ -310,6 +310,7 @@ class ToolExecutionManager:
             stop_reason=None,
         )
 
+    @trace_method
     async def _execute_single_tool_call(
         self,
         tool_call: ToolCall,
@@ -436,6 +437,7 @@ class ToolExecutionManager:
                 heartbeat_requested=heartbeat_on_error,  # Preserve heartbeat even on failure to prevent hanging
             )
 
+    @trace_method
     async def _execute_tools_sequentially(
         self,
         tool_calls: List[ToolCall],

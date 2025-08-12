@@ -5,6 +5,7 @@ Helps correlate business events across complex agent workflows.
 import contextvars
 from typing import Dict, Any, Optional
 from letta.log import get_logger
+from opentelemetry import trace
 
 logger = get_logger(__name__)
 
@@ -18,11 +19,22 @@ class WorkflowTracker:
     
     @staticmethod
     def get_correlation_context() -> Dict[str, Any]:
-        """Get current correlation IDs for logging."""
-        return {
+        """Get current correlation IDs and trace context for logging."""
+        context = {
             "correlation_id": request_id_var.get(),
             "workflow_id": workflow_id_var.get()
         }
+        
+        # Add OpenTelemetry trace context if available
+        current_span = trace.get_current_span()
+        if current_span and current_span.is_recording():
+            span_context = current_span.get_span_context()
+            if span_context.trace_id:
+                context["trace_id"] = format(span_context.trace_id, "032x")
+            if span_context.span_id:
+                context["span_id"] = format(span_context.span_id, "016x")
+        
+        return context
     
     @staticmethod
     def log_workflow_checkpoint(
