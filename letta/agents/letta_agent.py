@@ -26,6 +26,7 @@ from letta.errors import ContextWindowExceededError
 from letta.helpers import ToolRulesSolver
 from letta.helpers.datetime_helpers import AsyncTimer, get_utc_time, get_utc_timestamp_ns, ns_to_ms
 from letta.helpers.tool_execution_helper import enable_strict_mode
+from letta.utils.token_counting import num_tokens_from_messages
 from letta.interfaces.anthropic_streaming_interface import AnthropicStreamingInterface
 from letta.interfaces.openai_streaming_interface import OpenAIStreamingInterface
 from letta.llm_api.llm_client import LLMClient
@@ -1039,11 +1040,23 @@ class LettaAgent(BaseAgent):
         total_tokens: int | None = None,
         force: bool = False,
     ) -> list[Message]:
-        # If total tokens is reached, we truncate down
+        # Calculate the ACTUAL current context window size from the current messages
+        # NOTE: total_tokens parameter is cumulative usage across all steps (for billing)
+        # but we need the CURRENT context size to decide if summarization is needed
+        all_current_messages = in_context_messages + new_letta_messages
+        current_context_tokens = 0
+        
+        if all_current_messages:
+            # Convert messages to OpenAI format for token counting
+            openai_messages = [msg.to_openai_dict() for msg in all_current_messages]
+            current_context_tokens = num_tokens_from_messages(openai_messages, llm_config.model)
+        
+        # If current context tokens reach limit, we truncate down
         # TODO: This can be broken by bad configs, e.g. lower bound too high, initial messages too fat, etc.
-        if force or (total_tokens and total_tokens > llm_config.context_window):
+        if force or (current_context_tokens > llm_config.context_window):
             self.logger.warning(
-                f"Total tokens {total_tokens} exceeds configured max tokens {llm_config.context_window}, forcefully clearing message history."
+                f"Current context tokens {current_context_tokens} exceeds configured max tokens {llm_config.context_window}, forcefully clearing message history. "
+                f"(Note: cumulative usage across all steps is {total_tokens} tokens)"
             )
             new_in_context_messages, updated = await self.summarizer.summarize(
                 in_context_messages=in_context_messages,
@@ -1053,7 +1066,8 @@ class LettaAgent(BaseAgent):
             )
         else:
             self.logger.debug(
-                f"Total tokens {total_tokens} does not exceed configured max tokens {llm_config.context_window}, passing summarizing w/o force."
+                f"Current context tokens {current_context_tokens} does not exceed configured max tokens {llm_config.context_window}, passing summarizing w/o force. "
+                f"(Cumulative usage across all steps: {total_tokens} tokens)"
             )
             new_in_context_messages, updated = await self.summarizer.summarize(
                 in_context_messages=in_context_messages,

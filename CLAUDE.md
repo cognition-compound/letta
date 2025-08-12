@@ -136,10 +136,9 @@ LETTA_SERVER_PASSWORD="password"  # For secure mode
 LETTA_LOG_LEVEL="DEBUG"
 LETTA_DEBUG="true"
 
-# OpenTelemetry (standard OTEL vars)
+# OpenTelemetry (minimal required)
 OTEL_SERVICE_NAME="letta-server"
 OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector:4317"
-OTEL_TRACES_EXPORTER="otlp"
 
 # Database Connection Pool (to reduce connections)
 LETTA_PG_POOL_SIZE="10"
