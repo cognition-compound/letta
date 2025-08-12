@@ -874,50 +874,36 @@ class Message(BaseMessage):
         if self.content is not None:
             for content in self.content:
                 if isinstance(content, ReasoningContent):
-                    # First priority: Check signature field for serialized OpenAI reasoning object (for round-trip conversion)
-                    if content.signature:
-                        try:
-                            # Try to deserialize signature as JSON - it contains the preserved OpenAI reasoning object
-                            reasoning_obj = json.loads(content.signature)
-                            
-                            # Handle different serialization formats
-                            if isinstance(reasoning_obj, dict):
-                                if "output_reasoning_items" in reasoning_obj:
-                                    # This was serialized from output items format
-                                    # For now, we don't reconstruct output items - OpenAI doesn't expect that in requests
-                                    # Keep the signature field for reference
-                                    openai_message["reasoning_content_signature"] = content.signature
-                                else:
-                                    # This was serialized from top-level reasoning format - reconstruct it for OpenAI
-                                    openai_message["reasoning"] = reasoning_obj
-                            else:
-                                # Not a dict - treat as regular signature
-                                openai_message["reasoning_content_signature"] = content.signature
-                            
-                        except (json.JSONDecodeError, TypeError):
-                            # Not JSON - treat as regular signature (e.g., from Anthropic)
-                            openai_message["reasoning_content_signature"] = content.signature
-                    
-                    # Second priority: Check reasoning content (actual text vs JSON)
                     reasoning_text = content.reasoning
-                    if reasoning_text and "reasoning" not in openai_message:
-                        # Only process reasoning text if we didn't already set reasoning from signature
+                    
+                    # Handle reasoning content - try JSON first for legacy, then text
+                    if reasoning_text:
                         try:
-                            # Try to deserialize as JSON - legacy behavior for old messages
+                            # Try to deserialize as JSON - legacy behavior for old messages with serialized objects
                             reasoning_obj = json.loads(reasoning_text)
                             
                             # Handle different serialization formats
                             if isinstance(reasoning_obj, dict):
                                 if "output_reasoning_items" in reasoning_obj:
-                                    # This was serialized from output items format
-                                    pass
-                                else:
-                                    # This was serialized from top-level reasoning format - reconstruct it
+                                    # This was serialized from output items format - keep as reasoning_content
+                                    openai_message["reasoning_content"] = reasoning_text
+                                elif "effort" in reasoning_obj or "summary" in reasoning_obj:
+                                    # This was serialized from top-level reasoning format - reconstruct it for OpenAI
                                     openai_message["reasoning"] = reasoning_obj
+                                else:
+                                    # Unknown JSON format - keep as reasoning_content
+                                    openai_message["reasoning_content"] = reasoning_text
+                            else:
+                                # JSON but not dict - treat as reasoning_content
+                                openai_message["reasoning_content"] = reasoning_text
                             
                         except (json.JSONDecodeError, TypeError):
-                            # Not JSON - treat as regular reasoning content (e.g., from DeepSeek or our new format)
+                            # Not JSON - treat as regular reasoning content (actual text from our new extraction)
                             openai_message["reasoning_content"] = reasoning_text
+                    
+                    # Handle signature field (for Anthropic models)
+                    if content.signature:
+                        openai_message["reasoning_content_signature"] = content.signature
                         
                 if isinstance(content, RedactedReasoningContent):
                     openai_message["redacted_reasoning_content"] = content.data
