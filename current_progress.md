@@ -2,6 +2,47 @@
 
 ## 🚀 Recent Updates
 
+### ✅ FIXED: OpenAI Reasoning Content Extraction and Round-Trip Conversion (2025-08-12)
+**Fixed critical issue where ReasoningMessage received JSON metadata instead of actual reasoning content**
+
+**Problem:**
+- `ReasoningMessage.reasoning` contained: `{"effort":"minimal","summary":"auto"}` (metadata)
+- Instead of actual reasoning: `"Let me think step by step. First, I need to..."`
+- Round-trip conversion failed: actual text couldn't be converted back to proper OpenAI `reasoning` field
+
+**Root Cause:**
+- OpenAI Responses API returns reasoning in two places:
+  - `reasoning` field: metadata like `{"effort": "minimal"}`  
+  - `output[].type="reasoning"`: actual content and summary
+- Our code was serializing the metadata instead of extracting the actual content
+- When converting back to OpenAI, actual text went to wrong field (`reasoning_content` vs `reasoning`)
+
+**Complete Solution:**
+1. **Added content extraction**: `_extract_reasoning_content_and_summary()` extracts actual reasoning text
+2. **Dual storage approach**: 
+   - `reasoning_content`: Actual readable text (for ReasoningMessage display)
+   - `reasoning_content_signature`: Serialized reasoning object (for round-trip OpenAI conversion)
+3. **Fixed content type detection**: Summary uses `summary_text` not `reasoning_text`
+4. **Updated round-trip conversion**: Prioritizes signature field for OpenAI `reasoning` object reconstruction
+
+**Files Modified:**
+- `letta/llm_api/openai_client.py:489-597` - Added content extraction and dual storage
+- `letta/schemas/message.py:877-920` - Updated round-trip conversion logic
+
+**Testing:**
+- ✅ Extracts actual reasoning: "I need to think about this carefully..."
+- ✅ Preserves original object: `{"effort":"minimal","summary":"auto"}`
+- ✅ ReasoningMessage gets readable text for display/debugging
+- ✅ OpenAI conversion reconstructs proper `reasoning` field structure
+- ✅ Fallback chain: full content → summary → metadata summary
+- ✅ All edge cases handled (summary-only responses, etc.)
+
+**Impact:**
+- ReasoningMessage now shows actual reasoning content instead of JSON metadata
+- Perfect round-trip fidelity for OpenAI conversations
+- Agents now have transparent reasoning visibility
+- Maintains backward compatibility with existing messages
+
 ### ✅ UPDATED: OpenAI Reasoning Model Settings (2025-08-12)
 **Changed GPT-5 reasoning parameters to use minimal effort with auto summaries**
 

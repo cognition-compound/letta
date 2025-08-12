@@ -570,7 +570,7 @@ class OpenAIClient(LLMClientBase):
         # Extract actual reasoning content and summary
         reasoning_content, reasoning_summary = self._extract_reasoning_content_and_summary(response_data)
         
-        # Decide what to put in reasoning_content field based on what's available
+        # Store actual reasoning text in reasoning_content for ReasoningMessage display
         if reasoning_content:
             # Use the actual reasoning content (preferred)
             message.reasoning_content = reasoning_content
@@ -579,12 +579,12 @@ class OpenAIClient(LLMClientBase):
             # Fall back to reasoning summary if no full content
             message.reasoning_content = reasoning_summary
             logger.debug(f"[REASONING] Using reasoning summary ({len(reasoning_summary)} chars)")
-        else:
-            # Fall back to serialized reasoning metadata as last resort
-            serialized_reasoning = self._serialize_reasoning_for_preservation(response_data)
-            if serialized_reasoning:
-                message.reasoning_content = serialized_reasoning
-                logger.debug(f"[REASONING] Using serialized reasoning metadata ({len(serialized_reasoning)} chars)")
+        
+        # Always preserve the original reasoning object in reasoning_content_signature for round-trip OpenAI conversion
+        serialized_reasoning = self._serialize_reasoning_for_preservation(response_data)
+        if serialized_reasoning:
+            message.reasoning_content_signature = serialized_reasoning
+            logger.debug(f"[REASONING] Preserved original reasoning object ({len(serialized_reasoning)} chars) for round-trip conversion")
         
         # Set omitted flag appropriately
         if reasoning_content:
@@ -592,9 +592,9 @@ class OpenAIClient(LLMClientBase):
             message.omitted_reasoning_content = False
             logger.debug("[REASONING] Actual content available - omitted flag set to False")
         else:
-            # Either summary or serialized metadata - set omitted flag
+            # Either summary or no content - set omitted flag
             message.omitted_reasoning_content = True
-            logger.debug("[REASONING] Only summary/metadata available - omitted flag set to True")
+            logger.debug("[REASONING] Only summary/no content available - omitted flag set to True")
 
     @trace_method
     def build_request_data(
