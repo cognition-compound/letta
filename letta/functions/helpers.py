@@ -354,9 +354,15 @@ def fire_and_forget_send_to_agent(
             f"or does not belong to the same org ({sender_agent.user.organization_id})."
         )
 
-    # 2) Define the async coroutine to run
+    # Generate correlation ID for tracking this message end-to-end
+    import uuid
+    correlation_id = str(uuid.uuid4())[:8]
+    
+    # 2) Define the async coroutine to run with enhanced error handling
     async def background_task():
         try:
+            sender_agent.logger.info(f"{log_prefix} Starting background task [correlation_id: {correlation_id}] - sending to {other_agent_id}")
+            
             if use_retries:
                 result = await _async_send_message_with_retries(
                     server=server,
@@ -367,10 +373,19 @@ def fire_and_forget_send_to_agent(
                     timeout=20 * 60,  # 20 minutes
                     logging_prefix=log_prefix,
                 )
-                sender_agent.logger.info(f"{log_prefix} fire-and-forget success with retries: {result}")
+                sender_agent.logger.info(
+                    f"{log_prefix} Fire-and-forget success with retries [correlation_id: {correlation_id}]",
+                    extra={
+                        "event": "agent_message_sent_with_retries",
+                        "correlation_id": correlation_id,
+                        "target_agent_id": other_agent_id,
+                        "sender_agent_id": sender_agent.agent_state.id,
+                        "result": str(result)[:200]  # Truncate for logging
+                    }
+                )
             else:
                 # Direct call to server.send_message_to_agent, no retry logic
-                await server.send_message_to_agent(
+                result = await server.send_message_to_agent(
                     agent_id=other_agent_id,
                     actor=sender_agent.user,
                     input_messages=messages,
@@ -380,30 +395,97 @@ def fire_and_forget_send_to_agent(
                     assistant_message_tool_name=DEFAULT_MESSAGE_TOOL,
                     assistant_message_tool_kwarg=DEFAULT_MESSAGE_TOOL_KWARG,
                 )
-                sender_agent.logger.info(f"{log_prefix} fire-and-forget success (no retries).")
+                sender_agent.logger.info(
+                    f"{log_prefix} Fire-and-forget success [correlation_id: {correlation_id}]",
+                    extra={
+                        "event": "agent_message_sent_direct",
+                        "correlation_id": correlation_id,
+                        "target_agent_id": other_agent_id,
+                        "sender_agent_id": sender_agent.agent_state.id,
+                        "workflow_type": "agent_to_agent_communication"
+                    }
+                )
+                
         except Exception as e:
-            sender_agent.logger.error(f"{log_prefix} fire-and-forget send failed: {e}")
+            # Enhanced error logging with full context
+            error_details = {
+                "event": "agent_message_send_failed",
+                "correlation_id": correlation_id,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "target_agent_id": other_agent_id,
+                "sender_agent_id": sender_agent.agent_state.id,
+                "use_retries": use_retries,
+                "message_count": len(messages),
+                "workflow_type": "agent_to_agent_communication"
+            }
+            
+            sender_agent.logger.error(
+                f"{log_prefix} CRITICAL: Fire-and-forget send failed [correlation_id: {correlation_id}] - {str(e)}",
+                extra=error_details
+            )
+            
+            # Also log the full exception for debugging
+            sender_agent.logger.exception(f"{log_prefix} Full exception details [correlation_id: {correlation_id}]:")
 
-    # 3) Helper to run the coroutine in a brand-new event loop in a separate thread
+    # 3) Helper to run the coroutine in a brand-new event loop in a separate thread with error handling
     def run_in_background_thread(coro):
         def runner():
-            loop = asyncio.new_event_loop()
+            loop = None
             try:
+                loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
+                sender_agent.logger.debug(f"{log_prefix} Started new event loop in background thread [correlation_id: {correlation_id}]")
                 loop.run_until_complete(coro)
+            except Exception as e:
+                sender_agent.logger.error(
+                    f"{log_prefix} CRITICAL: Background thread execution failed [correlation_id: {correlation_id}] - {str(e)}",
+                    extra={
+                        "event": "background_thread_failed",
+                        "correlation_id": correlation_id,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                        "target_agent_id": other_agent_id,
+                        "sender_agent_id": sender_agent.agent_state.id,
+                        "workflow_type": "agent_to_agent_communication"
+                    }
+                )
             finally:
-                loop.close()
+                if loop:
+                    try:
+                        loop.close()
+                        sender_agent.logger.debug(f"{log_prefix} Closed event loop [correlation_id: {correlation_id}]")
+                    except Exception as e:
+                        sender_agent.logger.warning(f"{log_prefix} Failed to close event loop [correlation_id: {correlation_id}]: {e}")
 
-        thread = threading.Thread(target=runner, daemon=True)
-        thread.start()
+        try:
+            thread = threading.Thread(target=runner, daemon=True, name=f"agent-message-{correlation_id}")
+            thread.start()
+            sender_agent.logger.debug(f"{log_prefix} Started background thread '{thread.name}' [correlation_id: {correlation_id}]")
+        except Exception as e:
+            sender_agent.logger.error(
+                f"{log_prefix} CRITICAL: Failed to create background thread [correlation_id: {correlation_id}] - {str(e)}",
+                extra={
+                    "event": "thread_creation_failed",
+                    "correlation_id": correlation_id,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "target_agent_id": other_agent_id,
+                    "sender_agent_id": sender_agent.agent_state.id,
+                    "workflow_type": "agent_to_agent_communication"
+                }
+            )
+            raise  # Re-raise thread creation failures
 
-    # 4) Try to schedule the coroutine in an existing loop, else spawn a thread
+    # 4) Try to schedule the coroutine in an existing loop, else spawn a thread with error handling
     try:
         loop = asyncio.get_running_loop()
         # If we get here, a loop is running; schedule the coroutine in background
-        loop.create_task(background_task())
+        task = loop.create_task(background_task())
+        sender_agent.logger.debug(f"{log_prefix} Scheduled task in existing event loop [correlation_id: {correlation_id}]")
     except RuntimeError:
         # Means no event loop is running in this thread
+        sender_agent.logger.debug(f"{log_prefix} No event loop found, creating background thread [correlation_id: {correlation_id}]")
         run_in_background_thread(background_task())
 
 

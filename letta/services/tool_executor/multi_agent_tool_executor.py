@@ -77,6 +77,19 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
         from letta.schemas.enums import JobStatus
         from letta.agents.letta_agent import LettaAgent
 
+        # Enhanced logging for debugging agent communication issues
+        logger.info(
+            "Agent message processing initiated",
+            extra={
+                "event": "process_agent_start",
+                "target_agent_id": agent_id,
+                "source_agent_id": source_agent_id or "unknown", 
+                "message_length": len(message),
+                "agent_id_type": type(agent_id).__name__,
+                "workflow_type": "agent_to_agent_communication",
+            }
+        )
+
         # Log and validate agent_id
         logger.debug(f"_process_agent called with agent_id={agent_id!r} (type: {type(agent_id).__name__})")
 
@@ -86,6 +99,38 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
             if len(agent_id) == 0:
                 raise ValueError("agent_id list is empty")
             agent_id = agent_id[0]
+
+        # Validate the agent exists before creating a job
+        try:
+            target_agent_state = await self.agent_manager.get_agent_by_id_async(agent_id=agent_id, actor=self.actor)
+            logger.info(
+                "Target agent validated successfully",
+                extra={
+                    "event": "target_agent_validated",
+                    "target_agent_id": agent_id,
+                    "target_agent_name": target_agent_state.name,
+                    "source_agent_id": source_agent_id or "unknown",
+                    "workflow_type": "agent_to_agent_communication",
+                }
+            )
+        except Exception as e:
+            error_msg = f"Target agent {agent_id} not found or not accessible: {str(e)}"
+            logger.error(
+                "Target agent validation failed",
+                extra={
+                    "event": "target_agent_validation_failed",
+                    "target_agent_id": agent_id,
+                    "source_agent_id": source_agent_id or "unknown",
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "workflow_type": "agent_to_agent_communication",
+                }
+            )
+            return {
+                "agent_id": agent_id,
+                "error": error_msg,
+                "type": "AgentNotFound",
+            }
 
         try:
             # Create a job for tracking the agent message processing
@@ -125,7 +170,19 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
                 extra={"event": "agent_message_job_running", "job_id": run.id, "target_agent_id": agent_id},
             )
 
-            # Create and run the agent
+            # Create and run the agent with detailed logging
+            logger.info(
+                "Creating LettaAgent instance",
+                extra={
+                    "event": "letta_agent_creation_start",
+                    "job_id": run.id,
+                    "target_agent_id": agent_id,
+                    "summarization_enabled": True,
+                    "message_buffer_limit": 100,
+                    "workflow_type": "agent_to_agent_communication",
+                }
+            )
+            
             letta_agent = LettaAgent(
                 agent_id=agent_id,
                 message_manager=self.message_manager,
@@ -140,14 +197,43 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
                 message_buffer_limit=100,  # Higher for tool-heavy agents
                 message_buffer_min=20,
             )
+            
+            logger.info(
+                "LettaAgent created successfully, executing step",
+                extra={
+                    "event": "letta_agent_step_start", 
+                    "job_id": run.id,
+                    "target_agent_id": agent_id,
+                    "message_length": len(message),
+                    "workflow_type": "agent_to_agent_communication",
+                }
+            )
 
             # Use system role for agent-to-agent messages
             # Now that we've migrated to the Responses API, system messages work correctly
             # without breaking tool call ID tracking (verified in test_responses_api_system_messages.py)
+            import time
+            step_start_time = time.time()
+            
             letta_response = await letta_agent.step([MessageCreate(role=MessageRole.system, content=[TextContent(text=message)])])
+            
+            step_duration_ms = int((time.time() - step_start_time) * 1000)
             messages = letta_response.messages
 
             send_message_content = [message.content for message in messages if isinstance(message, AssistantMessage)]
+            
+            logger.info(
+                "LettaAgent step completed",
+                extra={
+                    "event": "letta_agent_step_completed",
+                    "job_id": run.id,
+                    "target_agent_id": agent_id,
+                    "step_duration_ms": step_duration_ms,
+                    "response_count": len(send_message_content),
+                    "total_messages": len(messages),
+                    "workflow_type": "agent_to_agent_communication",
+                }
+            )
 
             # Update job status to completed
             await self.job_manager.safe_update_job_status_async(

@@ -142,6 +142,21 @@ def send_message_to_agent_async(self: "Agent", message: str, other_agent_id: str
             raise ValueError("other_agent_id list is empty")
         other_agent_id = other_agent_id[0]
 
+    # CRITICAL: Validate that target agent exists before attempting to send
+    try:
+        server = get_letta_server()
+        # This will raise an exception if agent doesn't exist
+        target_agent = server.get_agent(agent_id=other_agent_id, user_id=self.user.id)
+        if not target_agent:
+            return f"ERROR: Agent {other_agent_id} not found. Message not sent."
+        
+        self.logger.info(f"Agent validation successful - sending message to {target_agent.name} ({other_agent_id})")
+        
+    except Exception as e:
+        error_msg = f"ERROR: Failed to validate target agent {other_agent_id}: {str(e)}. Message not sent."
+        self.logger.error(error_msg)
+        return error_msg
+
     # Create clean messages with sender context in system message
     messages = [
         MessageCreate(role=MessageRole.system, content=f'[Message from: Agent "{self.agent_state.name}" (ID: {self.agent_state.id})]'),
@@ -149,15 +164,19 @@ def send_message_to_agent_async(self: "Agent", message: str, other_agent_id: str
     ]
 
     # Use fire-and-forget to send without waiting
-    fire_and_forget_send_to_agent(
-        sender_agent=self,
-        messages=messages,
-        other_agent_id=other_agent_id,
-        log_prefix="[send_message_to_agent_async]",
-        use_retries=False,
-    )
-
-    return "Message sent successfully"
+    try:
+        fire_and_forget_send_to_agent(
+            sender_agent=self,
+            messages=messages,
+            other_agent_id=other_agent_id,
+            log_prefix="[send_message_to_agent_async]",
+            use_retries=False,
+        )
+        return f"Message sent successfully to {target_agent.name} ({other_agent_id})"
+    except Exception as e:
+        error_msg = f"ERROR: Failed to send message to {other_agent_id}: {str(e)}"
+        self.logger.error(error_msg)
+        return error_msg
 
 
 def send(self: "Agent", message: str, to: str) -> str:
