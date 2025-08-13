@@ -1,7 +1,7 @@
 import json
 import os
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import openai
 from openai import AsyncOpenAI, AsyncStream, OpenAI
@@ -183,31 +183,23 @@ class OpenAIClient(LLMClientBase):
 
         return kwargs
 
-    def _convert_messages_to_response_input(self, messages: List) -> List[dict]:
+    def _convert_messages_to_response_input(self, messages: List) -> Tuple[Optional[str], List[dict]]:
         """Convert internal message format to Responses API input format.
 
-        Based on OpenAI Responses API documentation (2025), the input format uses simple content:
-        {
-            "role": "user",
-            "content": "Hello"
-        }
-        or for multimodal:
-        {
-            "role": "user", 
-            "content": [
-                {"type": "text", "text": "Hello"},
-                {"type": "image_url", "image_url": {...}}
-            ]
-        }
+        Extracts system messages to use as instructions field for better caching,
+        and converts remaining messages to Responses API input format.
 
         Args:
             messages: List of PydanticMessage objects OR raw API response dicts (for multi-turn)
 
         Returns:
-            List of dicts in Responses API input format
+            Tuple of (system_instructions, input_messages) where:
+            - system_instructions: Combined system messages as a single string (or None)
+            - input_messages: List of dicts in Responses API input format
         """
         logger.debug(f"[DEBUG] Converting {len(messages)} messages to Responses API format")
         response_input = []
+        system_instructions = None
 
         for i, message in enumerate(messages):
             # Handle raw dicts from API responses (for multi-turn conversations)
@@ -249,20 +241,28 @@ class OpenAIClient(LLMClientBase):
                 response_input.append(self._convert_assistant_message(message))
 
             elif message.role == "system":
-                # System messages in Responses API
+                # Extract system messages for instructions field (better caching)
+                content_text = ""
                 if isinstance(message.content, str):
-                    response_input.append({"type": "message", "role": "system", "content": message.content})
+                    content_text = message.content
                 elif isinstance(message.content, list):
                     # Handle list content by extracting text
-                    content_text = ""
                     for item in message.content:
                         if hasattr(item, "text"):
                             content_text += item.text
                         else:
                             content_text += str(item)
-                    response_input.append({"type": "message", "role": "system", "content": content_text})
                 else:
-                    response_input.append({"type": "message", "role": "system", "content": str(message.content)})
+                    content_text = str(message.content)
+                
+                # Accumulate system instructions (usually just one, but handle multiple)
+                if system_instructions is None:
+                    system_instructions = content_text
+                else:
+                    system_instructions += "\n\n" + content_text
+                
+                # Log that we're extracting system message for instructions field
+                logger.debug(f"[CACHE OPTIMIZATION] Extracting system message {i} for instructions field ({len(content_text)} chars)")
 
             elif message.role == "developer":
                 # Developer role messages (if supported by model)
@@ -283,8 +283,8 @@ class OpenAIClient(LLMClientBase):
 
                 response_input.append(tool_result)
 
-        logger.debug(f"[DEBUG] Converted to {len(response_input)} response input items")
-        return response_input
+        logger.debug(f"[DEBUG] Converted to {len(response_input)} response input items, system_instructions={system_instructions is not None}")
+        return system_instructions, response_input
 
     def _convert_assistant_message(self, message: PydanticMessage) -> dict:
         """Convert assistant message to Responses API format."""
@@ -590,8 +590,8 @@ class OpenAIClient(LLMClientBase):
         # Use the validated (and potentially fixed) messages
         messages = validated_messages
         
-        # Convert messages to Responses API input format
-        response_input = self._convert_messages_to_response_input(messages)
+        # Convert messages to Responses API input format with system instructions extracted
+        system_instructions, response_input = self._convert_messages_to_response_input(messages)
 
         if llm_config.model:
             model = llm_config.model
@@ -606,6 +606,13 @@ class OpenAIClient(LLMClientBase):
             # NOTE: the reasoners that don't support temperature require 1.0, not None
             "temperature": llm_config.temperature if supports_temperature_param(model) else 1.0,
         }
+        
+        # Add instructions field if we have system messages (for better prompt caching)
+        if system_instructions:
+            data["instructions"] = system_instructions
+            logger.debug(f"[CACHE OPTIMIZATION] Using instructions field for system prompt ({len(system_instructions)} chars)")
+        else:
+            logger.debug("[CACHE OPTIMIZATION] No system instructions found, instructions field not set")
 
         # Add max_output_tokens parameter if specified (Responses API parameter name)
         if llm_config.max_tokens:

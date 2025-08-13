@@ -30,7 +30,7 @@ class TestResponsesAPIConversion:
         self.llm_config = LLMConfig.default_config("gpt-5")
 
     def test_convert_messages_to_response_input_simple(self):
-        """Test converting simple text messages to Responses API format."""
+        """Test converting simple text messages to Responses API format with system extraction."""
         messages = [
             PydanticMessage(
                 role=MessageRole.system,
@@ -46,22 +46,21 @@ class TestResponsesAPIConversion:
             )
         ]
         
-        result = self.client._convert_messages_to_response_input(messages)
+        system_instructions, response_input = self.client._convert_messages_to_response_input(messages)
         
-        assert len(result) == 2
+        # System message should be extracted to instructions field
+        assert system_instructions == "You are a helpful assistant."
         
-        # System message
-        assert result[0]["type"] == "message"
-        assert result[0]["role"] == "system"
-        assert result[0]["content"] == "You are a helpful assistant."
+        # Only user message should be in response input
+        assert len(response_input) == 1
         
         # User message
-        assert result[1]["type"] == "message"
-        assert result[1]["role"] == "user"
+        assert response_input[0]["type"] == "message"
+        assert response_input[0]["role"] == "user"
         # Content is an array with input_text item (API accepts both formats)
-        assert isinstance(result[1]["content"], list)
-        assert result[1]["content"][0]["type"] == "input_text"
-        assert result[1]["content"][0]["text"] == "Hello, how are you?"
+        assert isinstance(response_input[0]["content"], list)
+        assert response_input[0]["content"][0]["type"] == "input_text"
+        assert response_input[0]["content"][0]["text"] == "Hello, how are you?"
 
     def test_convert_messages_to_response_input_multimodal(self):
         """Test converting multimodal messages with text and images."""
@@ -76,28 +75,28 @@ class TestResponsesAPIConversion:
             )
         ]
         
-        result = self.client._convert_messages_to_response_input(messages)
+        system_instructions, response_input = self.client._convert_messages_to_response_input(messages)
         
-        assert len(result) == 1
-        assert result[0]["role"] == "user"
-        assert result[0]["type"] == "message"
+        # No system message, so instructions should be None
+        assert system_instructions is None
+        
+        # Only user message should be in response input
+        assert len(response_input) == 1
+        assert response_input[0]["role"] == "user"
+        assert response_input[0]["type"] == "message"
         # Content is an array with input_text item
-        assert isinstance(result[0]["content"], list)
-        assert result[0]["content"][0]["type"] == "input_text"
-        assert result[0]["content"][0]["text"] == "What do you see in this image?"
+        assert isinstance(response_input[0]["content"], list)
+        assert response_input[0]["content"][0]["type"] == "input_text"
+        assert response_input[0]["content"][0]["text"] == "What do you see in this image?"
 
     def test_convert_assistant_message_with_tool_calls(self):
         """Test converting assistant message with tool calls."""
         # Create a mock tool call
         mock_tool_call = Mock()
-        mock_tool_call.model_dump.return_value = {
-            "id": "call_123",
-            "type": "function",
-            "function": {
-                "name": "get_weather",
-                "arguments": '{"location": "San Francisco"}'
-            }
-        }
+        mock_tool_call.id = "call_123"
+        mock_tool_call.function = Mock()
+        mock_tool_call.function.name = "get_weather"
+        mock_tool_call.function.arguments = '{"location": "San Francisco"}'
         
         message = PydanticMessage(
             role=MessageRole.assistant,
@@ -109,11 +108,27 @@ class TestResponsesAPIConversion:
         
         result = self.client._convert_assistant_message(message)
         
-        assert result["role"] == "assistant"
+        # Assistant messages with tool calls return function call format, not message format
+        assert result["type"] == "function_call"
+        assert result["call_id"] == "call_123"
+        assert result["name"] == "get_weather"
+        assert result["arguments"] == '{"location": "San Francisco"}'
+
+    def test_convert_assistant_message_without_tool_calls(self):
+        """Test converting assistant message without tool calls."""
+        message = PydanticMessage(
+            role=MessageRole.assistant,
+            content=[TextContent(text="Hello! I'm doing great.")],
+            agent_id="agent-123",
+            model="gpt-5"
+        )
+        
+        result = self.client._convert_assistant_message(message)
+        
+        # Assistant messages without tool calls return regular message format
         assert result["type"] == "message"
-        assert result["content"] == "I'll check the weather for you."
-        assert "tool_calls" in result
-        assert len(result["tool_calls"]) == 1
+        assert result["role"] == "assistant"
+        assert result["content"] == "Hello! I'm doing great."
 
     def test_convert_responses_to_chat_completion(self):
         """Test converting Responses API response to Chat Completions format."""
@@ -151,7 +166,7 @@ class TestResponsesAPIConversion:
         assert choice["index"] == 0
         assert choice["message"]["role"] == "assistant"
         assert choice["message"]["content"] == "Hello! I'm doing great, thank you for asking."
-        assert choice["finish_reason"] == "completed"
+        assert choice["finish_reason"] == "stop"  # Response status "completed" maps to finish_reason "stop"
         assert "reasoning_content" in choice["message"]
 
     def test_convert_response_content(self):
@@ -227,7 +242,8 @@ class TestResponsesAPIConversion:
         # Check input format
         assert len(result["input"]) == 1
         assert result["input"][0]["role"] == "user"
-        assert isinstance(result["input"][0]["content"], str)
+        assert isinstance(result["input"][0]["content"], list)
+        assert result["input"][0]["content"][0]["type"] == "input_text"
         assert result["input"][0]["content"][0]["text"] == "What is the weather like?"
 
     def test_build_request_data_gpt5_parameters(self):
@@ -319,8 +335,174 @@ class TestResponsesAPIConversion:
         assert chat_completion.model == "gpt-5"
         assert len(chat_completion.choices) == 1
         assert chat_completion.choices[0].message.content == "Hello! Nice to meet you!"
-        assert chat_completion.choices[0].message.omitted_reasoning_content is True
+        assert chat_completion.choices[0].message.omitted_reasoning_content is False  # Reasoning content is preserved, not omitted
+        assert chat_completion.choices[0].message.reasoning_content is not None
         assert chat_completion.usage.total_tokens == 23
+
+
+class TestCacheOptimization:
+    """Test suite for cache optimization features."""
+
+    def setup_method(self):
+        """Setup test fixtures."""
+        self.client = OpenAIClient()
+        self.client.actor = Mock()
+        self.client.actor.id = "test-user-123"
+        self.llm_config = LLMConfig.default_config("gpt-5")
+
+    def test_system_message_extraction_single(self):
+        """Test that single system message is extracted to instructions field."""
+        messages = [
+            PydanticMessage(
+                role=MessageRole.system,
+                content=[TextContent(text="You are a helpful assistant.")],
+                agent_id="agent-123",
+                model="gpt-5"
+            ),
+            PydanticMessage(
+                role=MessageRole.user,
+                content=[TextContent(text="Hello")],
+                agent_id="agent-123",
+                model="gpt-5"
+            )
+        ]
+
+        system_instructions, response_input = self.client._convert_messages_to_response_input(messages)
+        
+        # System message should be extracted
+        assert system_instructions == "You are a helpful assistant."
+        
+        # Only user message should remain in input
+        assert len(response_input) == 1
+        assert response_input[0]["role"] == "user"
+
+    def test_system_message_extraction_multiple(self):
+        """Test that multiple system messages are combined into instructions field."""
+        messages = [
+            PydanticMessage(
+                role=MessageRole.system,
+                content=[TextContent(text="You are a helpful assistant.")],
+                agent_id="agent-123",
+                model="gpt-5"
+            ),
+            PydanticMessage(
+                role=MessageRole.system,
+                content=[TextContent(text="Please be concise.")],
+                agent_id="agent-123",
+                model="gpt-5"
+            ),
+            PydanticMessage(
+                role=MessageRole.user,
+                content=[TextContent(text="Hello")],
+                agent_id="agent-123",
+                model="gpt-5"
+            )
+        ]
+
+        system_instructions, response_input = self.client._convert_messages_to_response_input(messages)
+        
+        # System messages should be combined
+        assert system_instructions == "You are a helpful assistant.\n\nPlease be concise."
+        
+        # Only user message should remain in input
+        assert len(response_input) == 1
+        assert response_input[0]["role"] == "user"
+
+    def test_no_system_messages(self):
+        """Test that instructions field is None when no system messages."""
+        messages = [
+            PydanticMessage(
+                role=MessageRole.user,
+                content=[TextContent(text="Hello")],
+                agent_id="agent-123",
+                model="gpt-5"
+            )
+        ]
+
+        system_instructions, response_input = self.client._convert_messages_to_response_input(messages)
+        
+        # No system instructions
+        assert system_instructions is None
+        
+        # User message should be in input
+        assert len(response_input) == 1
+        assert response_input[0]["role"] == "user"
+
+    def test_build_request_data_with_instructions_field(self):
+        """Test that build_request_data includes instructions field for system messages."""
+        messages = [
+            PydanticMessage(
+                role=MessageRole.system,
+                content=[TextContent(text="You are a helpful assistant.")],
+                agent_id="agent-123",
+                model="gpt-5"
+            ),
+            PydanticMessage(
+                role=MessageRole.user,
+                content=[TextContent(text="Hello")],
+                agent_id="agent-123",
+                model="gpt-5"
+            )
+        ]
+
+        result = self.client.build_request_data(messages, self.llm_config)
+        
+        # Instructions field should be present with system message content
+        assert "instructions" in result
+        assert result["instructions"] == "You are a helpful assistant."
+        
+        # Input should only contain user message
+        assert len(result["input"]) == 1
+        assert result["input"][0]["role"] == "user"
+
+    def test_build_request_data_without_instructions_field(self):
+        """Test that build_request_data omits instructions field when no system messages."""
+        messages = [
+            PydanticMessage(
+                role=MessageRole.user,
+                content=[TextContent(text="Hello")],
+                agent_id="agent-123",
+                model="gpt-5"
+            )
+        ]
+
+        result = self.client.build_request_data(messages, self.llm_config)
+        
+        # Instructions field should not be present
+        assert "instructions" not in result
+        
+        # Input should contain user message
+        assert len(result["input"]) == 1
+        assert result["input"][0]["role"] == "user"
+
+    def test_system_message_with_list_content(self):
+        """Test system message extraction with list-based content."""
+        messages = [
+            PydanticMessage(
+                role=MessageRole.system,
+                content=[
+                    TextContent(text="You are helpful. "),
+                    TextContent(text="Be concise.")
+                ],
+                agent_id="agent-123",
+                model="gpt-5"
+            ),
+            PydanticMessage(
+                role=MessageRole.user,
+                content=[TextContent(text="Hello")],
+                agent_id="agent-123",
+                model="gpt-5"
+            )
+        ]
+
+        system_instructions, response_input = self.client._convert_messages_to_response_input(messages)
+        
+        # List content should be concatenated
+        assert system_instructions == "You are helpful. Be concise."
+        
+        # Only user message should remain
+        assert len(response_input) == 1
+        assert response_input[0]["role"] == "user"
 
 
 if __name__ == "__main__":

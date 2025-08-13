@@ -7,17 +7,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from letta.helpers.singleton import singleton
+from letta.log import get_logger
 from letta.orm.errors import NoResultFound
 from letta.orm.job import Job as JobModel
 from letta.orm.sqlalchemy_base import AccessType
 from letta.orm.step import Step as StepModel
-from letta.otel.tracing import get_trace_id, trace_method
+from letta.otel.tracing import get_trace_id, log_event, trace_method
 from letta.schemas.letta_stop_reason import LettaStopReason, StopReasonType
 from letta.schemas.openai.chat_completion_response import UsageStatistics
 from letta.schemas.step import Step as PydanticStep
 from letta.schemas.user import User as PydanticUser
 from letta.server.db import db_registry
 from letta.utils import enforce_types
+
+logger = get_logger(__name__)
 
 
 class FeedbackType(str, Enum):
@@ -107,6 +110,26 @@ class StepManager:
             "trace_id": get_trace_id(),  # Get the current trace ID
             "project_id": project_id,
         }
+        
+        # Log cache efficiency metrics if available
+        if usage.prompt_tokens_details and usage.prompt_tokens_details.cached_tokens > 0:
+            cache_hit_rate = usage.prompt_tokens_details.cached_tokens / usage.prompt_tokens if usage.prompt_tokens > 0 else 0
+            cost_savings_factor = 0.5  # 50% discount on cached tokens
+            estimated_savings = usage.prompt_tokens_details.cached_tokens * cost_savings_factor
+            
+            log_event(
+                "llm_cache_stats",
+                attributes={
+                    "agent_id": agent_id,
+                    "model": model,
+                    "cached_tokens": usage.prompt_tokens_details.cached_tokens,
+                    "total_prompt_tokens": usage.prompt_tokens,
+                    "cache_hit_rate": cache_hit_rate,
+                    "cache_hit_percentage": cache_hit_rate * 100,
+                    "estimated_cost_savings_tokens": estimated_savings,
+                }
+            )
+            logger.info(f"[CACHE STATS] Cached {usage.prompt_tokens_details.cached_tokens}/{usage.prompt_tokens} tokens ({cache_hit_rate:.1%} hit rate)")
         if step_id:
             step_data["id"] = step_id
         with db_registry.session() as session:
@@ -153,6 +176,26 @@ class StepManager:
             "trace_id": get_trace_id(),  # Get the current trace ID
             "project_id": project_id,
         }
+        
+        # Log cache efficiency metrics if available
+        if usage.prompt_tokens_details and usage.prompt_tokens_details.cached_tokens > 0:
+            cache_hit_rate = usage.prompt_tokens_details.cached_tokens / usage.prompt_tokens if usage.prompt_tokens > 0 else 0
+            cost_savings_factor = 0.5  # 50% discount on cached tokens
+            estimated_savings = usage.prompt_tokens_details.cached_tokens * cost_savings_factor
+            
+            log_event(
+                "llm_cache_stats",
+                attributes={
+                    "agent_id": agent_id,
+                    "model": model,
+                    "cached_tokens": usage.prompt_tokens_details.cached_tokens,
+                    "total_prompt_tokens": usage.prompt_tokens,
+                    "cache_hit_rate": cache_hit_rate,
+                    "cache_hit_percentage": cache_hit_rate * 100,
+                    "estimated_cost_savings_tokens": estimated_savings,
+                }
+            )
+            logger.info(f"[CACHE STATS] Cached {usage.prompt_tokens_details.cached_tokens}/{usage.prompt_tokens} tokens ({cache_hit_rate:.1%} hit rate)")
         if step_id:
             step_data["id"] = step_id
         if stop_reason:
