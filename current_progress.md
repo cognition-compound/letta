@@ -20,6 +20,25 @@
 
 ## 📝 Recent Critical Fixes (Last 7 Days)
 
+### ✅ FIXED: Agent Message Role Confusion - System vs User Message Processing (2025-08-13)
+**Resolved critical issue where main agent treated research agent system messages as user messages**
+
+**Problem:** Main agent continuously responded with "Noted. I will continue..." to research agent updates because system messages were prefixed with conversational language that made them appear as user communications.
+
+**Root Cause:** Message prefixes like `[Message from agent 'X']` and `[Broadcast message from agent 'X']` made system messages appear conversational rather than directive, causing LLMs to interpret them as user communications requiring acknowledgment.
+
+**Solution:**
+- Changed message prefixes to use directive system language:
+  - `[Message from agent 'X']` → `SYSTEM UPDATE from X:`  
+  - `[Broadcast message from agent 'X']` → `SYSTEM BROADCAST from X:`
+- System messages now appear as clear directives rather than conversational notifications
+
+**Files Modified:**
+- `letta/services/tool_executor/multi_agent_tool_executor.py:216` - Updated system message prefix
+- `letta/services/tool_executor/multi_agent_tool_executor.py:64` - Updated broadcast message prefix
+
+**Result:** Main agents now correctly process system messages from research agents without generating acknowledgment responses.
+
 ### ✅ FIXED: Research Agent Context Death (2025-08-13)
 **Resolved critical production issue where research agents crash permanently when hitting context limits**
 

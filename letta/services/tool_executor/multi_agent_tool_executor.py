@@ -61,10 +61,11 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
         if not matching_agents:
             return str([])
 
-        augmented_message = f"[Broadcast message from agent '{agent_state.id}'] {message}"
+        augmented_message = f"SYSTEM BROADCAST from agent {agent_state.id}:\n---\n{message}\n---"
 
         tasks = [
-            asyncio.create_task(self._process_agent(agent_id=matched_agent.id, message=augmented_message, source_agent_id=agent_state.id)) for matched_agent in matching_agents
+            asyncio.create_task(self._process_agent(agent_id=matched_agent.id, message=augmented_message, source_agent_id=agent_state.id))
+            for matched_agent in matching_agents
         ]
         results = await asyncio.gather(*tasks)
         return str(results)
@@ -75,10 +76,10 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
         from letta.schemas.run import Run
         from letta.schemas.enums import JobStatus
         from letta.agents.letta_agent import LettaAgent
-        
+
         # Log and validate agent_id
         logger.debug(f"_process_agent called with agent_id={agent_id!r} (type: {type(agent_id).__name__})")
-        
+
         # Defensive check
         if isinstance(agent_id, list):
             logger.warning(f"agent_id was passed as a list {agent_id}, extracting first element")
@@ -95,33 +96,35 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
                     "job_type": "agent_to_agent_message",
                     "target_agent_id": agent_id,
                     "source_agent_id": source_agent_id or "unknown",
-                }
+                },
             )
             run = await self.job_manager.create_job_async(pydantic_job=run, actor=self.actor)
-            
+
             # Business Flow Event: Agent message processing job created
-            logger.info("Agent message processing job created", extra={
-                "event": "agent_message_job_created",
-                "job_id": run.id,
-                "source_agent_id": source_agent_id or "unknown",
-                "target_agent_id": agent_id,
-                "message_summary": message[:100] + "..." if len(message) > 100 else message,
-                "workflow_type": "agent_to_agent_communication"
-            })
-            
+            logger.info(
+                "Agent message processing job created",
+                extra={
+                    "event": "agent_message_job_created",
+                    "job_id": run.id,
+                    "source_agent_id": source_agent_id or "unknown",
+                    "target_agent_id": agent_id,
+                    "message_summary": message[:100] + "..." if len(message) > 100 else message,
+                    "workflow_type": "agent_to_agent_communication",
+                },
+            )
+
             # Update job status to running
             await self.job_manager.safe_update_job_status_async(
                 job_id=run.id,
                 new_status=JobStatus.running,
                 actor=self.actor,
             )
-            
-            logger.info("Agent message processing job started", extra={
-                "event": "agent_message_job_running",
-                "job_id": run.id,
-                "target_agent_id": agent_id
-            })
-            
+
+            logger.info(
+                "Agent message processing job started",
+                extra={"event": "agent_message_job_running", "job_id": run.id, "target_agent_id": agent_id},
+            )
+
             # Create and run the agent
             letta_agent = LettaAgent(
                 agent_id=agent_id,
@@ -145,25 +148,28 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
             messages = letta_response.messages
 
             send_message_content = [message.content for message in messages if isinstance(message, AssistantMessage)]
-            
+
             # Update job status to completed
             await self.job_manager.safe_update_job_status_async(
                 job_id=run.id,
                 new_status=JobStatus.completed,
                 actor=self.actor,
             )
-            
+
             # Business Flow Event: Agent message processing completed successfully
             response_summary = str(send_message_content)[:200] if send_message_content else "No response content"
-            logger.info("Agent message processing completed successfully", extra={
-                "event": "agent_message_job_completed",
-                "job_id": run.id,
-                "target_agent_id": agent_id,
-                "source_agent_id": source_agent_id or "unknown",
-                "response_summary": response_summary,
-                "response_count": len(send_message_content),
-                "workflow_status": "success"
-            })
+            logger.info(
+                "Agent message processing completed successfully",
+                extra={
+                    "event": "agent_message_job_completed",
+                    "job_id": run.id,
+                    "target_agent_id": agent_id,
+                    "source_agent_id": source_agent_id or "unknown",
+                    "response_summary": response_summary,
+                    "response_count": len(send_message_content),
+                    "workflow_status": "success",
+                },
+            )
 
             return {
                 "agent_id": agent_id,
@@ -173,18 +179,21 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
 
         except Exception as e:
             # Business Flow Event: Agent message processing failed
-            logger.error("Agent message processing failed", extra={
-                "event": "agent_message_job_failed",
-                "job_id": run.id if 'run' in locals() else "unknown",
-                "target_agent_id": agent_id,
-                "source_agent_id": source_agent_id or "unknown",
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "workflow_status": "failed"
-            })
-            
+            logger.error(
+                "Agent message processing failed",
+                extra={
+                    "event": "agent_message_job_failed",
+                    "job_id": run.id if "run" in locals() else "unknown",
+                    "target_agent_id": agent_id,
+                    "source_agent_id": source_agent_id or "unknown",
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "workflow_status": "failed",
+                },
+            )
+
             # Try to update job status to failed if we created one
-            if 'run' in locals():
+            if "run" in locals():
                 try:
                     await self.job_manager.safe_update_job_status_async(
                         job_id=run.id,
@@ -201,10 +210,10 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
 
     async def send_message_to_agent_async(self, agent_state: AgentState, message: str, other_agent_id: str) -> str:
         """Send message to agent without waiting for response."""
-        
+
         # Log the agent_id being used for debugging
         logger.debug(f"send_message_to_agent_async called with other_agent_id={other_agent_id!r} (type: {type(other_agent_id).__name__})")
-        
+
         # Defensive check: ensure other_agent_id is a string
         if isinstance(other_agent_id, list):
             logger.warning(f"other_agent_id was passed as a list {other_agent_id}, extracting first element")
@@ -212,8 +221,8 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
                 raise ValueError("other_agent_id list is empty")
             other_agent_id = other_agent_id[0]
 
-        # Build the prefixed system message
-        prefixed = f"[Message from agent '{agent_state.id}'] {message}"
+        # Build the prefixed system message - use directive language to avoid conversational interpretation
+        prefixed = f"SYSTEM UPDATE from agent {agent_state.id}:\n---\n{message}\n---"
 
         task = asyncio.create_task(self._process_agent(agent_id=other_agent_id, message=prefixed, source_agent_id=agent_state.id))
 
@@ -224,34 +233,43 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
     async def send(self, agent_state: AgentState, message: str, to: str) -> str:
         """Universal message sending function with explicit routing."""
         # Business Flow Event: Message routing decision
-        logger.info("Agent message routing", extra={
-            "event": "agent_message_route",
-            "source_agent_id": agent_state.id,
-            "source_agent_name": agent_state.name,
-            "routing_target": to,
-            "message_summary": message[:100] + "..." if len(message) > 100 else message,
-            "routing_type": "user" if to == "user" else to.split(":")[0] if ":" in to else "unknown"
-        })
+        logger.info(
+            "Agent message routing",
+            extra={
+                "event": "agent_message_route",
+                "source_agent_id": agent_state.id,
+                "source_agent_name": agent_state.name,
+                "routing_target": to,
+                "message_summary": message[:100] + "..." if len(message) > 100 else message,
+                "routing_type": "user" if to == "user" else to.split(":")[0] if ":" in to else "unknown",
+            },
+        )
 
         if to == "user":
             # For user messages, just return the success message
             # The actual message delivery is handled by the streaming interfaces
             # which look for the tool name and extract the message parameter
-            logger.info("Message sent to user", extra={
-                "event": "message_to_user",
-                "source_agent_id": agent_state.id,
-                "message_summary": message[:100] + "..." if len(message) > 100 else message
-            })
+            logger.info(
+                "Message sent to user",
+                extra={
+                    "event": "message_to_user",
+                    "source_agent_id": agent_state.id,
+                    "message_summary": message[:100] + "..." if len(message) > 100 else message,
+                },
+            )
             return "Message sent to user"
 
         elif to.startswith("agent:"):
             agent_id = to.split(":", 1)[1]
-            logger.info("Agent-to-agent communication initiated", extra={
-                "event": "agent_to_agent_message_start",
-                "source_agent_id": agent_state.id,
-                "target_agent_id": agent_id,
-                "message_summary": message[:100] + "..." if len(message) > 100 else message
-            })
+            logger.info(
+                "Agent-to-agent communication initiated",
+                extra={
+                    "event": "agent_to_agent_message_start",
+                    "source_agent_id": agent_state.id,
+                    "target_agent_id": agent_id,
+                    "message_summary": message[:100] + "..." if len(message) > 100 else message,
+                },
+            )
             return await self.send_message_to_agent_async(agent_state, message, agent_id)
 
         elif to.startswith("group:"):
