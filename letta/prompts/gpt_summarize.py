@@ -1,4 +1,4 @@
-WORD_LIMIT = 100
+WORD_LIMIT = 1000
 SYSTEM = f"""Your job is to summarize a history of previous messages in a conversation between an AI persona and a human.
 The conversation you are given is a from a fixed context window and may not be complete.
 Messages sent by the AI are marked with the 'assistant' role.
