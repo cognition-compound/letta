@@ -130,7 +130,8 @@ async def test_static_buffer_summarization_all_user_messages_trimmed(mock_summar
 
     updated_messages, updated = summarizer._static_buffer_summarization(messages[:12], [])
 
-    assert len(updated_messages) == MESSAGE_BUFFER_MIN + 1
+    # With simplified checkpoint logic, we just return exactly MESSAGE_BUFFER_MIN messages
+    assert len(updated_messages) == MESSAGE_BUFFER_MIN
     assert updated
     mock_summarizer_agent.step.assert_called()
 
@@ -151,7 +152,7 @@ async def test_static_buffer_summarization_no_assistant_messages_trimmed(mock_su
 
     updated_messages, updated = summarizer._static_buffer_summarization(messages[:12], [])
 
-    # Yeah, so this actually has to end on 1, because we basically can find no user, so we trim everything
-    assert len(updated_messages) == 1
+    # With simplified checkpoint logic, we return exactly MESSAGE_BUFFER_MIN messages regardless of role
+    assert len(updated_messages) == MESSAGE_BUFFER_MIN
     assert updated
     mock_summarizer_agent.step.assert_called()

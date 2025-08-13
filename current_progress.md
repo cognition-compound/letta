@@ -20,6 +20,34 @@
 
 ## 📝 Recent Critical Fixes (Last 7 Days)
 
+### ✅ FIXED: Research Agent Context Death (2025-08-13)
+**Resolved critical production issue where research agents crash permanently when hitting context limits**
+
+**Problem:** Research agents working on long todo lists would hit context window limits and lose ALL context, becoming completely non-functional. Agents would be left with only the system message and no memory of their task.
+
+**Root Cause:** `multi_agent_tool_executor.py` creates `LettaAgent` instances without summarization parameters, causing context death when limits are hit.
+
+**Solution:**
+- Added missing summarization parameters to agent creation in `multi_agent_tool_executor.py`
+- Created uniform tool formatter for readable tool call summaries  
+- Implemented `send()` calls as natural checkpoint boundaries for summarization
+- Fixed system message detection to prevent keeping extra messages in tests
+
+**Files Modified:**
+- `letta/services/tool_executor/multi_agent_tool_executor.py:134-138` - Added summarization params
+- `letta/services/summarizer/summarizer.py:450-505` - Enhanced `tool_formatter` with call/response correlation
+- `letta/services/summarizer/summarizer.py:266-291` - Implemented checkpoint boundaries
+- `letta/services/summarizer/summarizer.py:522` - Updated `simple_summary` to use formatter
+- `tests/test_research_agent_context_death.py` - Test reproducing and validating fix
+
+**Result:** Research agents now survive context window limits and maintain task context through summarization.
+
+**Enhanced Tool Correlation (2025-08-13):**
+- Enhanced `tool_formatter()` to explicitly link tool calls with responses using `call → response` format
+- Research summaries now show clear cause-effect relationships: `tavily_search({query}) → Search results...`  
+- Eliminates ambiguity in parallel tool execution scenarios
+- Properly handles orphaned calls/responses for robust error recovery
+
 ### OpenAI Reasoning Architecture (2025-08-12)
 - Fixed reasoning display showing JSON metadata instead of actual reasoning content
 - Implemented complete reasoning structure serialization for OpenAI Responses API

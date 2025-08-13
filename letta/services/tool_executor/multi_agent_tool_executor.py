@@ -14,6 +14,7 @@ from letta.schemas.tool import Tool
 from letta.schemas.tool_execution_result import ToolExecutionResult
 from letta.schemas.user import User
 from letta.services.tool_executor.tool_executor_base import ToolExecutor
+from letta.services.summarizer.enums import SummarizationMode
 
 logger = get_logger(__name__)
 
@@ -130,6 +131,11 @@ class LettaMultiAgentToolExecutor(ToolExecutor):
                 job_manager=self.job_manager,
                 passage_manager=self.passage_manager,
                 actor=self.actor,
+                # Add summarization settings to prevent context death
+                enable_summarization=True,
+                summarizer_mode=SummarizationMode.PARTIAL_EVICT_MESSAGE_BUFFER,
+                message_buffer_limit=100,  # Higher for tool-heavy agents
+                message_buffer_min=20,
             )
 
             # Use system role for agent-to-agent messages

@@ -263,23 +263,32 @@ class Summarizer:
         else:
             logger.info(f"Requested force summarization, evicting until we retain only {retain_count} messages.")
 
-        target_trim_index = max(1, len(all_in_context_messages) - retain_count)
-
-        # Find the next user message starting from target_trim_index, but don't exceed bounds
-        original_trim_index = target_trim_index
-        max_search = min(10, len(all_in_context_messages) - target_trim_index - 1)  # Leave at least 1 message
-        search_count = 0
+        # Find send() tool calls as natural checkpoints
+        send_indices = []
+        for i, msg in enumerate(all_in_context_messages):
+            if msg.role == MessageRole.assistant and msg.tool_calls:
+                for call in msg.tool_calls:
+                    if call.function.name == "send":
+                        send_indices.append(i)
         
-        while (target_trim_index < len(all_in_context_messages) - 1 and 
-               all_in_context_messages[target_trim_index].role != MessageRole.user and
-               search_count < max_search):
-            target_trim_index += 1
-            search_count += 1
-        
-        # If we couldn't find a user message boundary or went too far, use original position
-        if target_trim_index >= len(all_in_context_messages) - 1:
-            logger.warning(f"No user message boundary found within {max_search} messages, using original position")
-            target_trim_index = original_trim_index
+        # Use the most recent send() as trim boundary
+        if send_indices:
+            # Find the last send() that keeps us under buffer limit
+            for send_idx in reversed(send_indices):
+                if len(all_in_context_messages) - send_idx <= retain_count:
+                    target_trim_index = send_idx + 2  # Keep send + response
+                    logger.info(f"Using send() checkpoint at index {send_idx}")
+                    break
+            else:
+                # All sends are too recent, use the first one
+                target_trim_index = send_indices[0] + 2
+        else:
+            # No send() calls found, use standard approach
+            # Only preserve index 0 if it's a system message, otherwise trim normally
+            if all_in_context_messages and all_in_context_messages[0].role == MessageRole.system:
+                target_trim_index = max(1, len(all_in_context_messages) - retain_count)
+            else:
+                target_trim_index = len(all_in_context_messages) - retain_count
 
         # CRITICAL FIX: Ensure tool call/response pairs are preserved as atomic units
         # Check if the trim boundary would split a tool call from its response
@@ -328,7 +337,11 @@ class Summarizer:
                 self.summarizer_agent.step([MessageCreate(role=MessageRole.user, content=[TextContent(text=summary_request_text)])])
             )
 
-        return [all_in_context_messages[0]] + updated_in_context_messages, True
+        # Only preserve index 0 if it's a system message, otherwise just return the trimmed messages
+        if all_in_context_messages and all_in_context_messages[0].role == MessageRole.system:
+            return [all_in_context_messages[0]] + updated_in_context_messages, True
+        else:
+            return updated_in_context_messages, True
 
     def _adjust_trim_index_for_tool_pairs(self, messages: List[Message], target_trim_index: int) -> int:
         """
@@ -434,6 +447,64 @@ def simple_formatter(messages: List[Message], include_system: bool = False) -> s
     return "\n".join(json.dumps(msg) for msg in parsed_messages)
 
 
+def tool_formatter(messages: List[Message], include_system: bool = False) -> str:
+    """Format messages with tool calls explicitly correlated to their responses."""
+    lines = []
+    
+    # First pass: Build mappings for tool call correlation
+    tool_calls_map = {}  # tool_call_id -> (function_name, arguments)
+    tool_responses_map = {}  # tool_call_id -> response_text
+    processed_tool_calls = set()  # Track which tool calls we've processed
+    
+    for msg in messages:
+        if msg.role == MessageRole.assistant and msg.tool_calls:
+            for call in msg.tool_calls:
+                tool_calls_map[call.id] = (call.function.name, call.function.arguments)
+        elif msg.role == MessageRole.tool and msg.tool_call_id:
+            text = "".join(c.text for c in msg.content if isinstance(c, TextContent))
+            tool_responses_map[msg.tool_call_id] = text
+    
+    # Second pass: Process messages in order, correlating tool calls with responses
+    for msg in messages:
+        if msg.role == MessageRole.system and not include_system:
+            continue
+            
+        if msg.role == MessageRole.user:
+            text = "".join(c.text for c in msg.content if isinstance(c, TextContent))
+            lines.append(f"User: {text}")
+            
+        elif msg.role == MessageRole.assistant:
+            if msg.tool_calls:
+                # Process tool calls and their responses as paired operations
+                for call in msg.tool_calls:
+                    if call.id in processed_tool_calls:
+                        continue  # Already processed this call
+                    
+                    processed_tool_calls.add(call.id)
+                    
+                    if call.id in tool_responses_map:
+                        # Paired operation: call → response
+                        response_text = tool_responses_map[call.id]
+                        lines.append(f"{call.function.name}({call.function.arguments}) → {response_text}")
+                    else:
+                        # Orphaned call (no response found)
+                        lines.append(f"{call.function.name}({call.function.arguments}) → [no response]")
+                        
+            elif msg.content:
+                # Regular assistant message (no tool calls)
+                text = "".join(c.text for c in msg.content if isinstance(c, TextContent))
+                if text:
+                    lines.append(f"Assistant: {text}")
+                    
+        elif msg.role == MessageRole.tool:
+            # Only process orphaned responses (responses without matching calls)
+            if msg.tool_call_id and msg.tool_call_id not in tool_calls_map:
+                text = "".join(c.text for c in msg.content if isinstance(c, TextContent))
+                lines.append(f"[orphaned response] → {text}")
+    
+    return "\n".join(lines)
+
+
 def simple_message_wrapper(openai_msg: dict) -> Message:
     """Extremely simple way to map from role/content to Message object w/ throwaway dummy fields"""
 
@@ -477,7 +548,7 @@ async def simple_summary(messages: List[Message], llm_config: LLMConfig, actor: 
 
     # Prepare the messages payload to send to the LLM
     system_prompt = gpt_summarize.SYSTEM
-    summary_transcript = simple_formatter(messages)
+    summary_transcript = tool_formatter(messages)
 
     if include_ack:
         input_messages = [
