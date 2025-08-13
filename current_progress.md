@@ -20,6 +20,25 @@
 
 ## 📝 Recent Critical Fixes (Last 7 Days)
 
+### ✅ FIXED: Send() Checkpoint Logic Causing Complete Context Loss (2025-08-13)
+**Fixed critical bug where send() checkpoint logic was evicting entire conversation history**
+
+**Problem:** Agents were losing ALL context except the last 3-4 messages. Main agents appeared to have amnesia after just a few exchanges. The send() checkpoint logic had a backwards condition that caused massive over-eviction.
+
+**Root Cause:** In `summarizer.py`, when all send() calls were "too recent" (within retain window), instead of falling back to standard trimming, the code incorrectly used the FIRST send as the trim point, evicting everything.
+
+**Solution:**
+- Fixed checkpoint logic to fall back to standard approach when all sends are within retain window
+- Added explicit summarization parameters (message_buffer_limit=60, message_buffer_min=15) to REST API
+- Created comprehensive tests to prevent regression
+
+**Files Modified:**
+- `letta/services/summarizer/summarizer.py:283-285` - Fixed checkpoint fallback logic
+- `letta/server/rest_api/routers/v1/agents.py` - Added explicit summarization parameters
+- `tests/test_send_checkpoint_bug.py` - New test file validating the fix
+
+**Result:** Agents now maintain proper conversation context. No unexpected eviction occurs when send() calls are recent.
+
 ### ✅ FIXED: Agent Message Role Confusion - System vs User Message Processing (2025-08-13)
 **Resolved critical issue where main agent treated research agent system messages as user messages**
 
