@@ -907,12 +907,15 @@ async def send_message(
                     step_manager=server.step_manager,
                     telemetry_manager=server.telemetry_manager if settings.llm_api_logging else NoopTelemetryManager(),
                     current_run_id=run.id if run else None,
-                    # summarizer settings to be added here
+                    # summarizer settings
                     summarizer_mode=(
                         SummarizationMode.STATIC_MESSAGE_BUFFER
                         if agent.agent_type == AgentType.voice_convo_agent
                         else SummarizationMode.PARTIAL_EVICT_MESSAGE_BUFFER
                     ),
+                    enable_summarization=True,
+                    message_buffer_limit=60,  # Explicit to avoid surprises
+                    message_buffer_min=15,     # Explicit to avoid surprises
                 )
 
             result = await agent_loop.step(
@@ -1045,12 +1048,15 @@ async def send_message_streaming(
                     step_manager=server.step_manager,
                     telemetry_manager=server.telemetry_manager if settings.llm_api_logging else NoopTelemetryManager(),
                     current_run_id=run.id if run else None,
-                    # summarizer settings to be added here
+                    # summarizer settings
                     summarizer_mode=(
                         SummarizationMode.STATIC_MESSAGE_BUFFER
                         if agent.agent_type == AgentType.voice_convo_agent
                         else SummarizationMode.PARTIAL_EVICT_MESSAGE_BUFFER
                     ),
+                    enable_summarization=True,
+                    message_buffer_limit=60,  # Explicit to avoid surprises
+                    message_buffer_min=15,     # Explicit to avoid surprises
                 )
             from letta.server.rest_api.streaming_response import StreamingResponseWithStatusCode
 
@@ -1370,11 +1376,15 @@ async def preview_raw_payload(
                 actor=actor,
                 step_manager=server.step_manager,
                 telemetry_manager=server.telemetry_manager if settings.llm_api_logging else NoopTelemetryManager(),
+                # summarizer settings
                 summarizer_mode=(
                     SummarizationMode.STATIC_MESSAGE_BUFFER
                     if agent.agent_type == AgentType.voice_convo_agent
                     else SummarizationMode.PARTIAL_EVICT_MESSAGE_BUFFER
                 ),
+                enable_summarization=True,
+                message_buffer_limit=60,  # Explicit to avoid surprises
+                message_buffer_min=15,     # Explicit to avoid surprises
             )
 
         # TODO: Support step_streaming

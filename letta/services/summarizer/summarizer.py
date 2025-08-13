@@ -280,10 +280,12 @@ class Summarizer:
                     logger.info(f"Using send() checkpoint at index {send_idx}")
                     break
             else:
-                # All sends are too recent, use the first one
-                target_trim_index = send_indices[0] + 2
-        else:
-            # No send() calls found, use standard approach
+                # All sends are too recent, don't use them as checkpoints
+                logger.info(f"All {len(send_indices)} send() calls are within retain window, using standard approach")
+                send_indices = []  # Clear to use standard logic below
+        
+        # Standard approach when no suitable send() checkpoints
+        if not send_indices:
             # Only preserve index 0 if it's a system message, otherwise trim normally
             if all_in_context_messages and all_in_context_messages[0].role == MessageRole.system:
                 target_trim_index = max(1, len(all_in_context_messages) - retain_count)
