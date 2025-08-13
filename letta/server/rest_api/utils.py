@@ -284,7 +284,7 @@ def create_heartbeat_system_message(
         text_content = REQ_HEARTBEAT_MESSAGE if function_call_success else FUNC_FAILED_HEARTBEAT_MESSAGE
 
     heartbeat_system_message = Message(
-        role=MessageRole.user,
+        role=MessageRole.system,
         content=[TextContent(text=get_heartbeat(timezone, text_content))],
         agent_id=agent_id,
         model=model,
