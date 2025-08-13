@@ -1,4 +1,4 @@
-WORD_LIMIT = 1000
+WORD_LIMIT = 1500
 SYSTEM = f"""Your task is to create an intelligent summary of a work session between an AI assistant and a user.
 
 The transcript shows:
