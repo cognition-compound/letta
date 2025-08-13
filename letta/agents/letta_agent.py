@@ -959,6 +959,8 @@ class LettaAgent(BaseAgent):
                     force=True,
                 )
                 new_in_context_messages = []
+                # Clear tool history after summarization to prevent continue rules from persisting
+                tool_rules_solver.clear_tool_history()
                 log_event(f"agent.stream_no_tokens.retry_attempt.{attempt + 1}")
 
     # noinspection PyInconsistentReturns
@@ -1017,6 +1019,8 @@ class LettaAgent(BaseAgent):
                     force=True,
                 )
                 new_in_context_messages: list[Message] = []
+                # Clear tool history after summarization to prevent continue rules from persisting
+                tool_rules_solver.clear_tool_history()
                 log_event(f"agent.stream_no_tokens.retry_attempt.{attempt + 1}")
 
     @trace_method

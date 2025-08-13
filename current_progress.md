@@ -20,6 +20,24 @@
 
 ## 📝 Recent Critical Fixes (Last 7 Days)
 
+### ✅ FIXED: Infinite Loop in session_todo_get Tool Rule (2025-08-13)
+**Resolved critical issue where agents got stuck in infinite loops calling session_todo_get**
+
+**Problem:** Agents configured with `ContinueToolRule` for `session_todo_get` would get stuck in infinite loops. When summarization occurred due to context window limits, the tool call history was not cleared, causing the continue rule to keep triggering indefinitely.
+
+**Root Cause:** After summarization in `_build_and_request_from_llm` methods, the code reset message context but failed to clear `tool_rules_solver.tool_call_history`, leaving continue rules in an active state.
+
+**Solution:**
+- Added `tool_rules_solver.clear_tool_history()` after successful summarization in both streaming and non-streaming paths
+- Tool rules now start fresh after context window management
+- Continue rules work correctly within a single context window but don't persist across summarization boundaries
+
+**Files Modified:**
+- `letta/agents/letta_agent.py:963,1023` - Added tool history clearing after summarization
+- `tests/test_tool_rule_history_clearing.py` - Test validating the fix
+
+**Result:** Agents with continue tool rules no longer get stuck in infinite loops when approaching context limits.
+
 ### ✅ FIXED: Send() Checkpoint Logic Causing Complete Context Loss (2025-08-13)
 **Fixed critical bug where send() checkpoint logic was evicting entire conversation history**
 
