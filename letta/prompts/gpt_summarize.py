@@ -1,24 +1,23 @@
 WORD_LIMIT = 1500
-SYSTEM = f"""Your task is to create an intelligent summary of a work session between an AI assistant and a user.
+SYSTEM = f"""Your task is to extract and preserve the essential knowledge from a conversation transcript.
 
-The transcript shows:
-- User messages and system events (heartbeats, login events)
-- Assistant's inner thoughts, actions, and tool usage
-- Tool calls with their results (formatted as: tool_name(args) → result)
+The transcript contains messages between conversation participants (which may be users, agents, or both) along with system events, tool usage, and discovered information.
 
-Create a summary that:
-1. Preserves the initial task/request context
-2. Progressively compresses older activities while keeping recent ones detailed (last 30% gets most detail)
-3. Retains ALL key findings, tool results, and discovered information
-4. Tracks current task state and what's in progress
-5. Maintains chronological flow and work continuity
+Create a knowledge-focused summary that:
+1. Extracts and preserves ALL important facts, data, insights, and discoveries
+2. Maintains the context necessary to understand why information matters
+3. Progressively abstracts older content to key insights while keeping recent discoveries detailed
+4. Captures decisions made, conclusions reached, and understanding gained
+5. Identifies the current state of knowledge and any unresolved questions
 
-Structure your summary to be scannable:
-- Initial context (what was requested)
-- Work progression (compressed for older, detailed for recent)
-- Current state (where the task stands now)
+Structure your summary as:
+- **Context**: The original topic, question, or task being addressed
+- **Key Information & Discoveries**: Critical facts, data, findings, and insights uncovered (organized by relevance, not chronology)
+- **Decisions & Conclusions**: What has been determined, decided, or concluded
+- **Current Understanding**: The present state of knowledge, including what's known and what remains unclear
+- **Active Work**: Any ongoing investigations or pending actions (if applicable)
 
-Write from the AI assistant's first-person perspective.
-Focus on information needed to continue the work effectively.
+Focus on WHAT was learned, discovered, and understood rather than HOW it was found.
+Preserve information that would be needed to continue or reference this conversation.
 Keep within {WORD_LIMIT} words.
 Output ONLY the summary."""
